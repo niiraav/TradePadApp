@@ -1,0 +1,31 @@
+:root {
+  --color-black:        #111827;
+  --color-dark:         #374151;
+  --color-mid:          #6B7280;
+  --color-muted:        #9CA3AF;
+  --color-border:       #E5E7EB;
+  --color-border-light: #F3F4F6;
+  --color-surface:      #F9FAFB;
+
+  --color-green:        #15803D;
+  --color-green-bg:     #F0FDF4;
+  --color-amber:        #B45309;
+  --color-amber-bg:     #FFFBEB;
+  --color-red:          #DC2626;
+  --color-red-bg:       #FEF2F2;
+  --color-blue:         #1D4ED8;
+  --color-blue-bg:      #EFF6FF;
+
+  --touch-primary:      52px;
+  --touch-secondary:    46px;
+  --touch-min:          44px;
+  --touch-row:          56px;
+
+  --radius-card:        12px;
+  --radius-input:       10px;
+  --radius-sheet:       16px;
+  --radius-chip:        9999px;
+
+  --shadow-sheet:       0 -4px 12px rgba(0,0,0,.06);
+  --shadow-seg:         0 1px 3px rgba(0,0,0,.10);
+}

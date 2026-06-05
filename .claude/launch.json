@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "TradePad wireframes",
+      "cwd": "/Users/niravarvinda/Workspace/projects/TradePad/wireframes",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 4000
+    }
+  ]
+}

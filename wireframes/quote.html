@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=390, initial-scale=1.0, user-scalable=no">
+<title>TradePad — Quote Flow</title>
+<style>
+  /*
+   * ICON NOTE: Emoji are low-fidelity placeholders → replace with Lucide icons.
+   *   📞 → Phone    ✕ → X    ‹ → ChevronLeft    📍 → MapPin
+   *   💬 → MessageCircle  📱 → Phone  📋 → Clipboard  💾 → Save
+   *
+   * QUOTE FLOW:
+   *   Entry A: Home "Log Missed Call" → s1 → s2 (task card) → s3
+   *   Entry B: Home "+ New Quote"     → s3
+   *   Shared:  s3 → s4 → s5 (deposit variant) → s6 → s7 → s8
+   *
+   * TBC ITEMS: Removed for MVP. All line items require an amount.
+   *   If parts unknown, Dave revises and resends after sourcing.
+   *   Validation: block Preview if any amount field is empty.
+   *
+   * AMOUNT FIELDS: use inputmode="decimal" for numerical keyboard.
+   * ADDRESS: plain text for MVP — postcode lookup API in Phase 2.
+   * SEND: plain text WhatsApp/SMS deep link for MVP. PDF in Phase 2.
+   * VALID DAYS: default 30 — configurable in Settings.
+   * PAYMENT OPTION AUTO-SCROLL: on segment select, call
+   *   depositSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+   */
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #E5E7EB;
+    padding: 20px;
+  }
+
+  /* ── State switcher ── */
+  .switcher { width: 390px; margin: 0 auto 16px; }
+  .switcher-label { font-size: 11px; color: #9CA3AF; font-family: monospace; margin-bottom: 8px; display: block; }
+  .switcher-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .state-btn {
+    padding: 5px 10px; font-size: 11px; background: #fff;
+    border: 1px solid #D1D5DB; border-radius: 6px; cursor: pointer;
+    color: #374151; font-family: -apple-system, sans-serif;
+  }
+  .state-btn.active { background: #111827; color: #fff; border-color: #111827; }
+
+  /* ── Phone shell ── */
+  .phone {
+    width: 390px; height: 844px; margin: 0 auto; background: #fff;
+    border-radius: 12px; overflow: hidden;
+    box-shadow: 0 4px 32px rgba(0,0,0,.12);
+    display: none; flex-direction: column; position: relative;
+  }
+  .phone.active { display: flex; }
+
+  /* ── Step header ── */
+  .step-hdr {
+    padding: 8px 16px 12px; border-bottom: 1px solid #F3F4F6; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .step-back {
+    display: inline-flex; align-items: center; gap: 4px;
+    min-height: 44px; font-size: 14px; color: #6B7280; cursor: pointer; font-weight: 500;
+  }
+  .step-back-arrow { font-size: 22px; color: #9CA3AF; line-height: 1; }
+  .step-title  { font-size: 16px; font-weight: 700; color: #111827; }
+  .step-action { font-size: 14px; color: #6B7280; cursor: pointer; min-height: 44px; display: flex; align-items: center; }
+  .step-cancel { font-size: 14px; color: #9CA3AF; cursor: pointer; min-height: 44px; display: flex; align-items: center; }
+
+  /* ── Scrollable body ── */
+  .body { flex: 1; overflow-y: auto; padding: 16px 16px 8px; min-height: 0; }
+
+  /* ── Form structure ── */
+  .form-section { margin-bottom: 22px; }
+  .form-section-label {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .7px; color: #6B7280; margin-bottom: 10px;
+  }
+  .form-field { margin-bottom: 10px; }
+  .field-label {
+    font-size: 11px; font-weight: 600; color: #9CA3AF; margin-bottom: 4px;
+    text-transform: uppercase; letter-spacing: .3px;
+  }
+  .field-optional { font-size: 11px; color: #9CA3AF; font-weight: 400; text-transform: none; letter-spacing: 0; margin-left: 4px; }
+  .field-input {
+    border: 1.5px solid #E5E7EB; border-radius: 10px; padding: 12px 14px;
+    font-size: 15px; min-height: 46px; display: flex; align-items: center;
+  }
+  .field-input.filled  { color: #111827; }
+  .field-input.empty   { color: #D1D5DB; font-style: italic; }
+  .field-input.focused { border-color: #111827; color: #111827; }
+  .field-row { display: flex; gap: 8px; }
+  .field-row .form-field { flex: 1; }
+
+  /* ── Segmented control ── */
+  .seg-control { display: flex; background: #F3F4F6; border-radius: 8px; padding: 3px; }
+  .seg-opt {
+    flex: 1; height: 34px; display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 500; color: #6B7280; border-radius: 6px; cursor: pointer;
+  }
+  .seg-opt.active { background: #fff; color: #111827; font-weight: 700; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+
+  /* ── Deposit % selector ──
+     Revealed when Deposit is selected — auto-scrolls into view on reveal */
+  .pct-section {
+    margin-top: 12px; padding: 14px; background: #F9FAFB;
+    border: 1px solid #E5E7EB; border-radius: 10px;
+  }
+  .pct-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .3px; color: #9CA3AF; margin-bottom: 10px; }
+  .pct-row   { display: flex; gap: 8px; }
+  .pct-opt {
+    flex: 1; height: 40px; border: 1.5px solid #E5E7EB; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 600; color: #6B7280; cursor: pointer; background: #fff;
+  }
+  .pct-opt.active { border-color: #111827; color: #111827; background: #fff; }
+  .deposit-calc { font-size: 13px; color: #6B7280; margin-top: 12px; text-align: center; line-height: 1.6; }
+  .deposit-calc strong { color: #111827; font-weight: 700; }
+
+  /* ── Quote item rows ── */
+  .items-list { margin-bottom: 4px; }
+  .qi-form-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .qi-desc {
+    flex: 1; border: 1.5px solid #E5E7EB; border-radius: 8px;
+    padding: 10px 12px; font-size: 13px; color: #374151; min-height: 42px;
+    display: flex; align-items: center;
+  }
+  .qi-desc.empty { color: #D1D5DB; font-style: italic; }
+  .qi-amt {
+    width: 80px; border: 1.5px solid #E5E7EB; border-radius: 8px;
+    padding: 10px 12px; font-size: 14px; color: #111827; font-weight: 600;
+    text-align: right; flex-shrink: 0; min-height: 42px;
+    display: flex; align-items: center; justify-content: flex-end;
+  }
+  .qi-remove-sm {
+    width: 28px; height: 28px; border: 1px solid #E5E7EB; background: #F9FAFB;
+    border-radius: 50%; color: #9CA3AF; font-size: 14px; cursor: pointer;
+    flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    font-family: inherit; line-height: 1;
+  }
+  .add-item-btn {
+    display: inline-flex; align-items: center; gap: 6px; padding: 6px 0;
+    font-size: 13px; color: #6B7280; cursor: pointer;
+    text-decoration: underline; text-underline-offset: 2px;
+  }
+
+  /* ── Total bar ── */
+  .total-bar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 0; border-top: 1.5px solid #111827; margin-top: 8px;
+  }
+  .total-label  { font-size: 15px; font-weight: 700; color: #111827; }
+  .total-amount { font-size: 24px; font-weight: 800; color: #111827; letter-spacing: -.5px; }
+
+  /* ── Customer strip ── */
+  .customer-strip {
+    background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px;
+    padding: 10px 14px; margin-bottom: 20px; display: flex; align-items: center; gap: 8px;
+  }
+  .cs-name  { font-size: 14px; font-weight: 600; color: #111827; }
+  .cs-phone { font-size: 12px; color: #9CA3AF; margin-top: 1px; }
+  .cs-edit  { font-size: 12px; color: #6B7280; text-decoration: underline; text-underline-offset: 2px; margin-left: auto; cursor: pointer; }
+
+  /* ── Quote preview card — light style, matches job-detail.html ── */
+  .quote-preview { border: 1px solid #E5E7EB; border-radius: 12px; overflow: hidden; margin-bottom: 16px; }
+
+  /* Status-style header — white bg, ref + status badge */
+  .preview-meta-hdr { padding: 14px 16px 10px; border-bottom: 1px solid #F3F4F6; }
+  .preview-ref-row  { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .preview-ref-num  { font-size: 12px; color: #9CA3AF; font-weight: 500; }
+  .preview-status   {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 10px; border-radius: 6px;
+    background: #EFF6FF; color: #1D4ED8;
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
+  }
+  .preview-status-dot { width: 5px; height: 5px; border-radius: 50%; background: #1D4ED8; }
+  .preview-job-name { font-size: 18px; font-weight: 700; color: #111827; }
+  .preview-customer { font-size: 13px; color: #6B7280; margin-top: 2px; }
+
+  /* Info rows — same pattern as job-detail info-card */
+  .preview-info { border-bottom: 1px solid #F3F4F6; }
+  .preview-info-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 11px 16px; border-bottom: 1px solid #F9FAFB;
+  }
+  .preview-info-row:last-child { border-bottom: none; }
+  .pi-label { font-size: 13px; color: #9CA3AF; }
+  .pi-val   { font-size: 13px; color: #111827; font-weight: 500; text-align: right; }
+
+  /* Items block */
+  .preview-items { padding: 12px 16px 0; }
+  .preview-item-row { display: flex; justify-content: space-between; padding: 7px 0; font-size: 13px; color: #374151; border-bottom: 1px solid #F9FAFB; }
+  .preview-item-row:last-child { border-bottom: none; }
+  .preview-total-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 16px; border-top: 1.5px solid #111827;
+    font-size: 16px; font-weight: 700; color: #111827;
+  }
+  .preview-total-amt { font-size: 20px; font-weight: 800; }
+  .preview-footer { padding: 12px 16px; border-top: 1px solid #F3F4F6; font-size: 12px; color: #9CA3AF; line-height: 1.5; }
+
+  /* ── Missed call card ── */
+  .mc-card { border: 1px solid #D1D5DB; border-radius: 10px; overflow: hidden; margin-bottom: 20px; }
+  .mc-hdr { display: flex; align-items: center; gap: 10px; padding: 12px 14px; }
+  .mc-icon { font-size: 18px; flex-shrink: 0; }
+  .mc-info { flex: 1; }
+  .mc-number { font-size: 14px; font-weight: 600; color: #111827; }
+  .mc-when   { font-size: 11px; color: #9CA3AF; margin-top: 2px; }
+  .mc-actions { display: flex; border-top: 1px solid #F3F4F6; }
+  .mc-action {
+    flex: 1; height: 46px; display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 600; cursor: pointer; border-right: 1px solid #F3F4F6;
+    color: #374151;
+  }
+  .mc-action:last-child { border-right: none; }
+  .mc-action.primary { color: #111827; }
+  .mc-action.muted   { color: #9CA3AF; font-weight: 400; }
+
+  /* ── Home tab bar (Tasks context) ── */
+  .hdr-bar { padding: 16px 16px 12px; display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid #F3F4F6; flex-shrink: 0; }
+  .hdr-name { font-size: 18px; font-weight: 700; color: #111827; }
+  .hdr-sub  { font-size: 12px; color: #9CA3AF; margin-top: 2px; }
+  .hdr-amount { font-size: 22px; font-weight: 800; color: #111827; text-align: right; }
+  .hdr-label  { font-size: 11px; color: #9CA3AF; margin-top: 1px; }
+  .home-tabs  { display: flex; flex-shrink: 0; border-bottom: 1px solid #F3F4F6; }
+  .home-tab   { flex: 1; height: 40px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 500; color: #9CA3AF; cursor: pointer; gap: 6px; }
+  .home-tab.active { color: #111827; font-weight: 700; box-shadow: inset 0 -2px 0 #111827; }
+  .htab-badge { background: #EF4444; color: #fff; font-size: 10px; font-weight: 700; border-radius: 10px; padding: 2px 6px; }
+  .section-hdr { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .section-label { font-size: 10px; font-weight: 700; color: #6B7280; text-transform: uppercase; letter-spacing: .7px; }
+  .l2-group { border: 1px solid #D1D5DB; border-radius: 10px; overflow: hidden; margin-bottom: 16px; }
+  .l2-row { display: flex; align-items: center; padding: 12px 14px; gap: 10px; border-bottom: 1px solid #F3F4F6; cursor: pointer; min-height: 52px; }
+  .l2-row:last-child { border-bottom: none; }
+  .l2-tag { font-size: 10px; font-weight: 700; color: #111827; background: #F3F4F6; padding: 2px 7px; border-radius: 4px; text-transform: uppercase; white-space: nowrap; flex-shrink: 0; }
+  .l2-name { font-size: 14px; font-weight: 600; color: #111827; flex: 1; }
+  .chevron { font-size: 18px; color: #D1D5DB; flex-shrink: 0; }
+  .tab-bar { flex-shrink: 0; display: flex; border-top: 1px solid #E5E7EB; }
+  .tab { flex: 1; height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 11px; color: #9CA3AF; cursor: pointer; }
+  .tab.active { color: #111827; font-weight: 600; }
+  .tab-icon { width: 22px; height: 22px; background: #F3F4F6; border-radius: 4px; }
+  .tab.active .tab-icon { background: #111827; }
+
+  /* ── Sticky CTA footer ── */
+  .jd-footer {
+    flex-shrink: 0; padding: 12px 16px 24px;
+    border-top: 1px solid #F3F4F6;
+    box-shadow: 0 -4px 12px rgba(0,0,0,.06);
+    background: #fff; display: flex; flex-direction: column; gap: 8px;
+  }
+  .cta-primary {
+    width: 100%; height: 52px; background: #111827; color: #fff;
+    border: none; border-radius: 12px; font-size: 16px; font-weight: 700;
+    cursor: pointer; font-family: inherit;
+  }
+  .cta-secondary {
+    width: 100%; height: 46px; background: #F9FAFB; color: #111827;
+    border: 1px solid #D1D5DB; border-radius: 12px; font-size: 14px; font-weight: 600;
+    cursor: pointer; font-family: inherit;
+  }
+  .cta-links { display: flex; align-items: center; justify-content: center; gap: 24px; padding: 4px 0; font-size: 13px; }
+  .cta-links a { color: #9CA3AF; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+
+  /* ── Bottom sheet ── */
+  .sheet-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.25); z-index: 20; }
+  .sheet { position: absolute; bottom: 0; left: 0; right: 0; background: #fff; border-radius: 16px 16px 0 0; z-index: 30; }
+  .sheet-handle { width: 36px; height: 4px; background: #D1D5DB; border-radius: 2px; margin: 12px auto 16px; }
+  .sheet-title { font-size: 15px; font-weight: 700; color: #111827; padding: 0 16px 3px; }
+  .sheet-opt { display: flex; align-items: center; gap: 12px; padding: 0 16px; height: 56px; border-top: 1px solid #F3F4F6; font-size: 15px; font-weight: 500; color: #111827; cursor: pointer; }
+  .sheet-opt .opt-icon { font-size: 20px; width: 28px; text-align: center; flex-shrink: 0; }
+  .sheet-opt.muted { color: #9CA3AF; font-size: 14px; }
+  .msg-preview { background: #F9FAFB; border: 1.5px solid #E5E7EB; border-radius: 10px; padding: 12px 14px; font-size: 13px; color: #374151; line-height: 1.5; margin: 8px 16px 0; cursor: text; }
+  .msg-edit-hint { font-size: 10px; color: #9CA3AF; text-align: right; padding: 4px 16px 0; }
+
+  /* ── Info callout ── */
+  .info-note { background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px; padding: 12px 14px; font-size: 12px; color: #9CA3AF; line-height: 1.6; }
+  .info-note strong { color: #374151; }
+</style>
+</head>
+<body>
+
+<div class="switcher">
+  <span class="switcher-label">quote.html · v2 · TBC removed · preview redesigned · auto-scroll noted</span>
+  <div class="switcher-row">
+    <button class="state-btn active" onclick="show('s1',this)">1. Log Missed Call</button>
+    <button class="state-btn" onclick="show('s2',this)">2. Missed call → Tasks</button>
+    <button class="state-btn" onclick="show('s3',this)">3. Customer details</button>
+    <button class="state-btn" onclick="show('s4',this)">4. Quote builder</button>
+    <button class="state-btn" onclick="show('s5',this)">5. + Deposit %</button>
+    <button class="state-btn" onclick="show('s6',this)">6. Preview</button>
+    <button class="state-btn" onclick="show('s7',this)">7. Send sheet</button>
+    <button class="state-btn" onclick="show('s8',this)">8. Sent</button>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════
+     S1 · Log Missed Call
+     Lightweight capture — confirm lead after calling back
+════════════════════════════════════════════════ -->
+<div class="phone active" id="s1">
+  <div class="step-hdr">
+    <div class="step-back"><span class="step-back-arrow">‹</span> Home</div>
+    <div class="step-title">Log missed call</div>
+    <div class="step-cancel">Cancel</div>
+  </div>
+  <div class="body">
+
+    <div class="form-section">
+      <div class="form-field">
+        <div class="field-label">Phone number</div>
+        <div class="field-input filled">07700 900123</div>
+      </div>
+      <div class="form-field">
+        <div class="field-label">Name <span class="field-optional">(optional)</span></div>
+        <div class="field-input empty">e.g. Richards</div>
+      </div>
+    </div>
+
+    <div class="info-note">
+      Saved to Tasks. Call back first — once confirmed as a lead, tap <strong>Create quote</strong> on the task card.
+    </div>
+
+  </div>
+  <div class="jd-footer">
+    <button class="cta-primary">Save &amp; call back</button>
+    <button class="cta-secondary">Save only</button>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════
+     S2 · Missed call task card — Tasks tab
+     Call back → confirm lead → Create quote
+════════════════════════════════════════════════ -->
+<div class="phone" id="s2">
+  <div class="hdr-bar">
+    <div>
+      <div class="hdr-name">Morning, Dave</div>
+      <div class="hdr-sub">Wed · 3 jobs today</div>
+    </div>
+    <div>
+      <div class="hdr-amount">£3,040</div>
+      <div class="hdr-label">owed to you</div>
+    </div>
+  </div>
+  <div class="home-tabs">
+    <div class="home-tab">Today</div>
+    <div class="home-tab active">Tasks <span class="htab-badge">3</span></div>
+  </div>
+  <div class="body">
+
+    <div class="section-hdr"><span class="section-label">Can't ignore</span></div>
+    <div class="l2-group">
+      <div class="l2-row"><span class="l2-tag">No-show</span><span class="l2-name">Thompson · Consumer unit</span><span class="chevron">›</span></div>
+    </div>
+
+    <div class="section-hdr"><span class="section-label">When you get a minute</span></div>
+
+    <!-- Missed call card with three actions -->
+    <div class="mc-card">
+      <div class="mc-hdr">
+        <span class="mc-icon">📞</span>
+        <div class="mc-info">
+          <div class="mc-number">07700 900123</div>
+          <div class="mc-when">Missed call · 25 mins ago</div>
+        </div>
+      </div>
+      <div class="mc-actions">
+        <div class="mc-action primary">Call back</div>
+        <div class="mc-action primary">Create quote</div>
+        <div class="mc-action muted">Dismiss</div>
+      </div>
+    </div>
+
+  </div>
+  <div style="flex-shrink:0;padding:10px 16px;border-top:1px solid #F3F4F6;display:flex;gap:8px;">
+    <button style="flex:1;height:44px;border:1px solid #D1D5DB;border-radius:8px;background:#fff;font-size:13px;font-weight:600;color:#111827;cursor:pointer;font-family:inherit;">+ New Quote</button>
+    <button style="flex:1;height:44px;border:1px solid #D1D5DB;border-radius:8px;background:#fff;font-size:13px;font-weight:600;color:#111827;cursor:pointer;font-family:inherit;">Log Missed Call</button>
+  </div>
+  <div class="tab-bar">
+    <div class="tab active"><div class="tab-icon"></div>Home</div>
+    <div class="tab"><div class="tab-icon"></div>Jobs</div>
+    <div class="tab"><div class="tab-icon"></div>Activity</div>
+    <div class="tab"><div class="tab-icon"></div>Settings</div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════
+     S3 · Customer details
+     Name + phone mandatory. Address optional (MVP).
+     Phone pre-filled if from missed call entry.
+════════════════════════════════════════════════ -->
+<div class="phone" id="s3">
+  <div class="step-hdr">
+    <div class="step-back"><span class="step-back-arrow">‹</span> Back</div>
+    <div class="step-title">New quote</div>
+    <div class="step-cancel">Cancel</div>
+  </div>
+  <div class="body">
+
+    <div class="form-section">
+      <div class="form-section-label">Customer</div>
+      <div class="form-field">
+        <div class="field-label">Name</div>
+        <div class="field-input filled">Richards</div>
+      </div>
+      <div class="form-field">
+        <div class="field-label">Phone number</div>
+        <div class="field-input filled">07700 900123</div>
+      </div>
+      <div class="form-field">
+        <div class="field-label">Address <span class="field-optional">(optional · used for navigation)</span></div>
+        <div class="field-input empty">e.g. 14 Birch Lane, Holmfirth</div>
+      </div>
+    </div>
+
+  </div>
+  <div class="jd-footer">
+    <button class="cta-primary">Continue →</button>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════
+     S4 · Quote builder — On completion
+     Combined: job + items + payment terms
+     Scrollable. All items require an amount (no TBC).
+     DEV: on payment segment change → scrollIntoView on payment section
+════════════════════════════════════════════════ -->
+<div class="phone" id="s4">
+  <div class="step-hdr">
+    <div class="step-back"><span class="step-back-arrow">‹</span> Back</div>
+    <div class="step-title">Quote details</div>
+    <div class="step-cancel">Cancel</div>
+  </div>
+  <div class="body">
+
+    <div class="customer-strip">
+      <div>
+        <div class="cs-name">Richards</div>
+        <div class="cs-phone">07700 900123</div>
+      </div>
+      <span class="cs-edit">Edit</span>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-label">Job</div>
+      <div class="form-field">
+        <div class="field-label">Job title</div>
+        <div class="field-input filled">New boiler installation</div>
+      </div>
+      <div class="form-field">
+        <div class="field-label">Date</div>
+        <div class="field-input filled">Wed 14 May 2025</div>
+      </div>
+      <div class="field-row">
+        <div class="form-field">
+          <div class="field-label">Start</div>
+          <div class="field-input filled">10:00am</div>
+        </div>
+        <div class="form-field">
+          <div class="field-label">End</div>
+          <div class="field-input filled">1:00pm</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-label">Items</div>
+      <div class="items-list">
+        <div class="qi-form-row">
+          <div class="qi-desc">Labour</div>
+          <div class="qi-amt">£800</div>
+          <button class="qi-remove-sm">×</button>
+        </div>
+        <div class="qi-form-row">
+          <div class="qi-desc">Parts &amp; materials</div>
+          <div class="qi-amt">£400</div>
+          <button class="qi-remove-sm">×</button>
+        </div>
+      </div>
+      <div class="add-item-btn">+ Add item</div>
+      <div class="total-bar">
+        <span class="total-label">Total</span>
+        <span class="total-amount">£1,200</span>
+      </div>
+    </div>
+
+    <!-- Payment section — DEV: scroll this into view when segment changes -->
+    <div class="form-section" id="s4-payment">
+      <div class="form-section-label">Payment</div>
+      <div class="seg-control">
+        <div class="seg-opt active">On completion</div>
+        <div class="seg-opt">Deposit</div>
+        <div class="seg-opt">Invoice</div>
+      </div>
+    </div>
+
+  </div>
+  <div class="jd-footer">
+    <button class="cta-primary">Preview quote →</button>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════
+     S5 · Quote builder — Deposit selected
+     Deposit % presets — calculated from total above
+     Screen shows scrolled to reveal deposit section
+     DEV: auto-scroll to pct-section on Deposit select
+════════════════════════════════════════════════ -->
+<div class="phone" id="s5">
+  <div class="step-hdr">
+    <div class="step-back"><span class="step-back-arrow">‹</span> Back</div>
+    <div class="step-title">Quote details</div>
+    <div class="step-cancel">Cancel</div>
+  </div>
+  <div class="body">
+
+    <!-- Customer strip is scrolled up — body starts at items for context -->
+    <div class="form-section">
+      <div class="form-section-label">Items</div>
+      <div class="items-list">
+        <div class="qi-form-row">
+          <div class="qi-desc">Labour</div>
+          <div class="qi-amt">£800</div>
+          <button class="qi-remove-sm">×</button>
+        </div>
+        <div class="qi-form-row">
+          <div class="qi-desc">Parts &amp; materials</div>
+          <div class="qi-amt">£400</div>
+          <button class="qi-remove-sm">×</button>
+        </div>
+      </div>
+      <div class="add-item-btn">+ Add item</div>
+      <div class="total-bar">
+        <span class="total-label">Total</span>
+        <span class="total-amount">£1,200</span>
+      </div>
+    </div>
+
+    <!-- Payment section — Deposit selected — deposit % section visible after auto-scroll -->
+    <div class="form-section">
+      <div class="form-section-label">Payment</div>
+      <div class="seg-control">
+        <div class="seg-opt">On completion</div>
+        <div class="seg-opt active">Deposit</div>
+        <div class="seg-opt">Invoice</div>
+      </div>
+
+      <!-- Revealed on Deposit select — scrolled into view automatically -->
+      <div class="pct-section">
+        <div class="pct-label">Deposit amount</div>
+        <div class="pct-row">
+          <div class="pct-opt">10%</div>
+          <div class="pct-opt active">20%</div>
+          <div class="pct-opt">25%</div>
+          <div class="pct-opt">50%</div>
+        </div>
+        <!-- Live calculated value — updates as % or total changes -->
+        <div class="deposit-calc">
+          Deposit: <strong>£240</strong><br>
+          Balance on completion: <strong>£960</strong>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <div class="jd-footer">
+    <button class="cta-primary">Preview quote →</button>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════
+     S6 · Quote preview
+     Light card — matches job-detail.html styling
+     WCAG-compliant text sizes and contrast
+     Dave reviews before sending
+════════════════════════════════════════════════ -->
+<div class="phone" id="s6">
+  <div class="step-hdr">
+    <div class="step-back"><span class="step-back-arrow">‹</span> Back</div>
+    <div class="step-title">Preview</div>
+    <div class="step-action">Edit</div>
+  </div>
+  <div class="body">
+
+    <div class="quote-preview">
+
+      <!-- Header: status badge + job name + customer — white bg, no dark header -->
+      <div class="preview-meta-hdr">
+        <div class="preview-ref-row">
+          <span class="preview-ref-num">Quote #Q-0041</span>
+          <span class="preview-status"><span class="preview-status-dot"></span>Quoted</span>
+        </div>
+        <div class="preview-job-name">New boiler installation</div>
+        <div class="preview-customer">Richards · 07700 900123</div>
+      </div>
+
+      <!-- Info rows — date, payment terms, validity -->
+      <div class="preview-info">
+        <div class="preview-info-row"><span class="pi-label">Date &amp; time</span><span class="pi-val">Wed 14 May · 10am–1pm</span></div>
+        <div class="preview-info-row"><span class="pi-label">Payment</span><span class="pi-val">On completion</span></div>
+        <div class="preview-info-row"><span class="pi-label">Valid until</span><span class="pi-val">13 Jun 2025</span></div>
+      </div>
+
+      <!-- Items block -->
+      <div class="preview-items">
+        <div class="preview-item-row"><span>Labour</span><span>£800</span></div>
+        <div class="preview-item-row"><span>Parts &amp; materials</span><span>£400</span></div>
+      </div>
+      <div class="preview-total-row">
+        <span>Total</span>
+        <span class="preview-total-amt">£1,200</span>
+      </div>
+
+      <div class="preview-footer">Dave's Plumbing &amp; Heating · 07700 900456</div>
+    </div>
+
+  </div>
+  <div class="jd-footer">
+    <button class="cta-primary">Send quote →</button>
+    <div class="cta-links"><a>Save as draft</a></div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════
+     S7 · Send sheet
+     Plain text message — editable before sending
+     WhatsApp / SMS / Copy / Save draft
+════════════════════════════════════════════════ -->
+<div class="phone" id="s7">
+  <div class="step-hdr">
+    <div class="step-back"><span class="step-back-arrow">‹</span> Back</div>
+    <div class="step-title">Preview</div>
+    <div class="step-action">Edit</div>
+  </div>
+  <div class="body">
+    <div class="quote-preview">
+      <div class="preview-meta-hdr">
+        <div class="preview-ref-row">
+          <span class="preview-ref-num">Quote #Q-0041</span>
+          <span class="preview-status"><span class="preview-status-dot"></span>Quoted</span>
+        </div>
+        <div class="preview-job-name">New boiler installation</div>
+        <div class="preview-customer">Richards · 07700 900123</div>
+      </div>
+      <div class="preview-info">
+        <div class="preview-info-row"><span class="pi-label">Date &amp; time</span><span class="pi-val">Wed 14 May · 10am–1pm</span></div>
+        <div class="preview-info-row"><span class="pi-label">Payment</span><span class="pi-val">On completion</span></div>
+        <div class="preview-info-row"><span class="pi-label">Valid until</span><span class="pi-val">13 Jun 2025</span></div>
+      </div>
+      <div class="preview-items">
+        <div class="preview-item-row"><span>Labour</span><span>£800</span></div>
+        <div class="preview-item-row"><span>Parts &amp; materials</span><span>£400</span></div>
+      </div>
+      <div class="preview-total-row"><span>Total</span><span class="preview-total-amt">£1,200</span></div>
+      <div class="preview-footer">Dave's Plumbing &amp; Heating</div>
+    </div>
+  </div>
+  <div class="jd-footer">
+    <button class="cta-primary">Send quote →</button>
+    <div class="cta-links"><a>Save as draft</a></div>
+  </div>
+
+  <div class="sheet-overlay"></div>
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">Send to Richards?</div>
+    <div class="msg-preview">Hi Richards, here's your quote for New boiler installation — £1,200. Payment on completion. Valid until 13 Jun. — Dave (Dave's Plumbing &amp; Heating)</div>
+    <div class="msg-edit-hint">Tap to edit before sending</div>
+    <div class="sheet-opt" style="margin-top:8px;"><span class="opt-icon">💬</span>Send via WhatsApp</div>
+    <div class="sheet-opt"><span class="opt-icon">📱</span>Send via SMS</div>
+    <div class="sheet-opt muted"><span class="opt-icon">📋</span>Copy message</div>
+    <div class="sheet-opt muted"><span class="opt-icon">💾</span>Save as draft</div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════
+     S8 · Sent confirmation
+     Job created as Quoted state
+     Copy: Dave must take manual action to mark as Booked
+════════════════════════════════════════════════ -->
+<div class="phone" id="s8">
+  <div class="step-hdr">
+    <div class="step-back" style="visibility:hidden;"><span class="step-back-arrow">‹</span></div>
+    <div class="step-title"></div>
+    <div class="step-cancel"></div>
+  </div>
+
+  <div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:32px 24px; text-align:center;">
+
+    <div style="width:64px;height:64px;background:#F0FDF4;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:28px;margin-bottom:20px;">✓</div>
+    <div style="font-size:22px;font-weight:800;color:#111827;margin-bottom:8px;">Quote sent</div>
+    <div style="font-size:15px;color:#6B7280;line-height:1.5;margin-bottom:28px;">
+      Richards · New boiler installation<br>
+      £1,200 · Via WhatsApp
+    </div>
+
+    <div style="width:100%;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:16px;margin-bottom:28px;text-align:left;">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#9CA3AF;margin-bottom:8px;">What happens next</div>
+      <div style="font-size:13px;color:#374151;line-height:1.7;">
+        Job saved under <strong>Quoted</strong> in your Jobs list.<br><br>
+        When Richards confirms, open the job and tap <strong>Mark as Booked</strong> to move it forward.
+      </div>
+    </div>
+
+    <div style="width:100%;display:flex;flex-direction:column;gap:8px;">
+      <button class="cta-primary">View job</button>
+      <button class="cta-secondary">Back to home</button>
+    </div>
+
+  </div>
+</div>
+
+
+<script>
+function show(id, btn) {
+  document.querySelectorAll('.phone').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.state-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  btn.classList.add('active');
+}
+</script>
+
+</body>
+</html>
