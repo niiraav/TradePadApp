@@ -62,7 +62,9 @@ type SheetState =
   | 'mark_done'
   | 'add_note'
   | 'mark_paid'
-  | 'send_reminder';
+  | 'send_reminder'
+  | 'reschedule'
+  | 'callout_charge';
 
 /* ─── component ─── */
 
@@ -83,7 +85,20 @@ export default function JobDetail() {
   const [chargeAmount, setChargeAmount] = useState('');
   const [noteText, setNoteText] = useState('');
   const [payments, setPayments] = useState<Payment[]>([]);
+
+  /* Initialize callout amount from profile */
+  useEffect(() => {
+    if (profile?.callout_charge) {
+      setCalloutAmount(String(profile.callout_charge));
+    } else {
+      setCalloutAmount('75');
+    }
+  }, [profile]);
   const [reminderText, setReminderText] = useState('');
+  const [rescheduleDate, setRescheduleDate] = useState('');
+  const [calloutDesc, setCalloutDesc] = useState('Callout charge');
+  const [calloutAmount, setCalloutAmount] = useState('');
+  const [workLogExpanded, setWorkLogExpanded] = useState(false);
 
   /* ─── load data ─── */
   const refresh = useCallback(async () => {
@@ -136,6 +151,16 @@ export default function JobDetail() {
     }
     if (job.status === 'no_show' && job.scheduled_start) {
       return ` · ${formatShortDate(new Date(job.scheduled_start))} · ${formatTime(new Date(job.scheduled_start))}`;
+    }
+    if (job.status === 'paid' && job.actual_end && payments.length > 0) {
+      const lastPayment = payments[payments.length - 1];
+      return ` · ${formatShortDate(new Date(job.actual_end))} · ${lastPayment.method === 'cash' ? 'Cash' : lastPayment.method === 'bank_transfer' ? 'Bank Transfer' : 'Other'} · £${total.toFixed(2)}`;
+    }
+    if (job.status === 'cancelled' && job.updated_at) {
+      return ` · ${formatShortDate(new Date(job.updated_at))}`;
+    }
+    if (job.status === 'written_off' && job.updated_at) {
+      return ` · ${formatShortDate(new Date(job.updated_at))}`;
     }
     return '';
   }, [job]);
@@ -337,6 +362,78 @@ export default function JobDetail() {
     await addToSyncQueue('jobs', job.id, { status: 'paid', updated_at: n });
     setSheet(null);
     refresh();
+  };
+
+  
+
+  const handleReschedule = async () => {
+    if (!job || !rescheduleDate) return;
+    const n = now();
+    await db.jobs.update(job.id, {
+      status: 'booked',
+      scheduled_start: rescheduleDate,
+      actual_end: undefined,
+      updated_at: n,
+      _sync_status: 'pending',
+    });
+    await db.work_log.add({
+      id: crypto.randomUUID(),
+      job_id: job.id,
+      type: 'note',
+      description: `Rescheduled to ${formatShortDate(new Date(rescheduleDate))} · ${formatTime(new Date(rescheduleDate))}`,
+      created_at: n,
+      _sync_status: 'pending',
+    });
+    await addToSyncQueue('jobs', job.id, { status: 'booked', scheduled_start: rescheduleDate, updated_at: n });
+    setRescheduleDate('');
+    setSheet(null);
+    refresh();
+  };
+
+  const handleCalloutCharge = async () => {
+    if (!job || !customer) return;
+    const amount = parseFloat(calloutAmount);
+    if (isNaN(amount) || amount <= 0) return;
+    const n = now();
+    const newJobId = crypto.randomUUID();
+    await db.jobs.add({
+      id: newJobId,
+      user_id: job.user_id,
+      customer_id: job.customer_id,
+      title: 'Callout charge',
+      status: 'awaiting_payment',
+      payment_terms: 'invoice',
+      invoice_sent_at: n,
+      is_multi_day: false,
+      created_at: n,
+      updated_at: n,
+      _sync_status: 'pending',
+    });
+    const liId = crypto.randomUUID();
+    await db.line_items.add({
+      id: liId,
+      job_id: newJobId,
+      description: calloutDesc.trim() || 'Callout charge',
+      amount,
+      sort_order: 0,
+      added_on_site: false,
+      created_at: n,
+      _sync_status: 'pending',
+    });
+    await db.work_log.add({
+      id: crypto.randomUUID(),
+      job_id: newJobId,
+      type: 'status_change',
+      description: 'Callout charge invoice created',
+      created_at: n,
+      _sync_status: 'pending',
+    });
+    await addToSyncQueue('jobs', newJobId, { user_id: job.user_id, customer_id: job.customer_id, title: 'Callout charge', status: 'awaiting_payment', payment_terms: 'invoice', invoice_sent_at: n, is_multi_day: false });
+    await addToSyncQueue('line_items', liId, { job_id: newJobId, description: calloutDesc.trim() || 'Callout charge', amount, sort_order: 0 });
+    setCalloutDesc('Callout charge');
+    setCalloutAmount(profile?.callout_charge ? String(profile.callout_charge) : '75');
+    setSheet(null);
+    navigate(`/jobs/${newJobId}`);
   };
 
   const handleWriteOff = async () => {
@@ -643,6 +740,199 @@ export default function JobDetail() {
     );
   };
 
+  
+
+  const renderNoShowBody = () => {
+    if (!job || !customer) return null;
+    return (
+      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-2">
+        {renderStatusBadge()}
+
+        <div className="border border-[#E5E7EB] rounded-[10px] p-4 mb-5">
+          <div className="text-[10px] font-bold uppercase tracking-[0.5px] text-[#9CA3AF] mb-2">
+            What happened
+          </div>
+          <div className="text-[14px] text-[#374151] leading-relaxed">
+            {profile?.full_name?.split(' ')[0] || 'Dave'} arrived at {job.actual_end ? formatTime(new Date(job.actual_end)) : '—'} — customer not home
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderNoShowFooter = () => (
+    <div className="sticky bottom-0 z-30 bg-white border-t border-[#F3F4F6] shadow-sheet">
+      <div className="flex flex-col gap-2 px-4 py-3 pb-[calc(32px_+_env(safe-area-inset-bottom))]">
+        <Button variant="primary" onClick={() => setSheet('reschedule')}>
+          Reschedule
+        </Button>
+        <Button variant="secondary" onClick={() => setSheet('callout_charge')}>
+          Charge callout
+        </Button>
+        <div className="flex items-center justify-center gap-6 py-1">
+          <button
+            onClick={() => setSheet('cancel')}
+            className="min-h-[44px] text-[13px] text-[#9CA3AF] cursor-pointer underline underline-offset-2 text-center"
+          >
+            Cancel / write off
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderPaidBody = () => {
+    if (!job) return null;
+    const lastPayment = payments.length > 0 ? payments[payments.length - 1] : null;
+    const visibleLogs = workLogExpanded ? workLog : workLog.slice(0, 3);
+    return (
+      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-2">
+        {renderStatusBadge()}
+
+        <div className="border border-[#E5E7EB] rounded-[10px] p-4 mb-5">
+          <div className="text-[10px] font-bold uppercase tracking-[0.5px] text-[#9CA3AF] mb-2">
+            Payment record
+          </div>
+          <div className="text-[15px] font-bold text-[#15803D] mb-1">
+            Paid
+          </div>
+          <div className="text-[13px] text-[#6B7280] mb-0.5">
+            {lastPayment?.method === 'cash' ? 'Cash' : lastPayment?.method === 'bank_transfer' ? 'Bank Transfer' : 'Other'} · £{total.toFixed(2)}
+          </div>
+          <div className="text-[12px] text-[#9CA3AF]">
+            Recorded {job.actual_end ? formatShortDate(new Date(job.actual_end)) : '—'}
+          </div>
+        </div>
+
+        <div className="mb-5">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] font-bold text-[#6B7280] uppercase tracking-[0.7px]">Work log</span>
+          </div>
+          {workLog.length === 0 ? (
+            <p className="text-[13px] text-[#9CA3AF] italic py-2">No work logged</p>
+          ) : (
+            <div>
+              {visibleLogs.map((log) => (
+                <div key={log.id} className="flex gap-2.5 py-2 border-b border-[#F3F4F6] last:border-b-0 items-start">
+                  <span className="text-[11px] text-[#9CA3AF] whitespace-nowrap shrink-0 pt-0.5 min-w-[46px]">
+                    {formatLogTime(log.created_at)}
+                  </span>
+                  <span className="text-[13px] text-[#374151] flex-1 leading-relaxed">
+                    {log.description}
+                  </span>
+                  {log.amount !== undefined && log.amount > 0 && (
+                    <span className="text-[12px] font-bold text-[#15803D] shrink-0 whitespace-nowrap">
+                      +£{log.amount.toFixed(2)}
+                    </span>
+                  )}
+                </div>
+              ))}
+              {workLog.length > 3 && (
+                <button
+                  onClick={() => setWorkLogExpanded(!workLogExpanded)}
+                  className="text-[12px] text-[#6B7280] underline underline-offset-2 cursor-pointer mt-1"
+                >
+                  {workLogExpanded ? 'Show less' : `Show ${workLog.length - 3} more`}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between mb-2.5">
+          <span className="text-[10px] font-bold text-[#6B7280] uppercase tracking-[0.7px]">Invoice items</span>
+        </div>
+        <div className="border border-[#E5E7EB] rounded-[10px] overflow-hidden mb-5">
+          {lineItems.map((item) => (
+            <InvoiceItemRow key={item.id} item={item} showRemove={false} />
+          ))}
+          <InvoiceTotalRow total={total} />
+        </div>
+      </div>
+    );
+  };
+
+  const renderCancelledBody = () => {
+    if (!job) return null;
+    return (
+      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-2">
+        {renderStatusBadge()}
+
+        <div className="border border-[#E5E7EB] rounded-[10px] p-4 mb-5">
+          <div className="text-[10px] font-bold uppercase tracking-[0.5px] text-[#9CA3AF] mb-2">
+            Reason
+          </div>
+          <div className="text-[14px] text-[#374151] leading-relaxed">
+            {job.cancellation_reason === 'customer_cancelled' ? 'Customer cancelled' : 'I cancelled'}
+          </div>
+        </div>
+
+        <div className="border border-[#E5E7EB] rounded-[10px] p-4 mb-5">
+          <div className="text-[10px] font-bold uppercase tracking-[0.5px] text-[#9CA3AF] mb-2">
+            Notes
+          </div>
+          {job.notes ? (
+            <div className="text-[13px] text-[#374151] leading-relaxed">
+              {job.notes}
+            </div>
+          ) : (
+            <p className="text-[13px] text-[#D1D5DB] italic leading-relaxed">
+              Tap to add a note about this cancellation…
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderWrittenOffBody = () => {
+    if (!job) return null;
+    return (
+      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-2">
+        {renderStatusBadge()}
+
+        <div className="border border-[#E5E7EB] rounded-[10px] p-4 mb-5">
+          <div className="text-[10px] font-bold uppercase tracking-[0.5px] text-[#9CA3AF] mb-2">
+            Amount written off
+          </div>
+          <div className="text-[28px] font-extrabold text-[#111827] my-1 tracking-[-0.5px]">
+            £{total.toFixed(2)}
+          </div>
+          <div className="text-[13px] text-[#9CA3AF] mt-2">
+            Logged as bad debt · not counted in income
+          </div>
+        </div>
+
+        <div className="mb-5">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] font-bold text-[#6B7280] uppercase tracking-[0.7px]">Work log</span>
+          </div>
+          {workLog.length === 0 ? (
+            <p className="text-[13px] text-[#9CA3AF] italic py-2">No work logged</p>
+          ) : (
+            <div>
+              {workLog.map((log) => (
+                <div key={log.id} className="flex gap-2.5 py-2 border-b border-[#F3F4F6] last:border-b-0 items-start">
+                  <span className="text-[11px] text-[#9CA3AF] whitespace-nowrap shrink-0 pt-0.5 min-w-[46px]">
+                    {formatLogTime(log.created_at)}
+                  </span>
+                  <span className="text-[13px] text-[#374151] flex-1 leading-relaxed">
+                    {log.description}
+                  </span>
+                  {log.amount !== undefined && log.amount > 0 && (
+                    <span className="text-[12px] font-bold text-[#15803D] shrink-0 whitespace-nowrap">
+                      +£{log.amount.toFixed(2)}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const renderAwaitingPaymentFooter = () => (
     <div className="sticky bottom-0 z-30 bg-white border-t border-[#F3F4F6] shadow-sheet">
       <div className="flex flex-col gap-2 px-4 py-3 pb-[calc(32px_+_env(safe-area-inset-bottom))]">
@@ -857,6 +1147,79 @@ export default function JobDetail() {
     );
   };
 
+
+  const renderRescheduleSheet = () => (
+    <BottomSheet
+      isOpen={sheet === 'reschedule'}
+      onClose={() => { setSheet(null); setRescheduleDate(''); }}
+      title="Reschedule job"
+      subtitle={job && customer ? `${customer.name} · ${job.title}` : undefined}
+    >
+      <div className="mb-4">
+        <label className="block text-[10px] font-bold uppercase tracking-[0.4px] text-[#9CA3AF] mb-1">
+          New date & time
+        </label>
+        <input
+          type="datetime-local"
+          value={rescheduleDate}
+          onChange={(e) => setRescheduleDate(e.target.value)}
+          className="w-full h-[48px] px-3.5 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] font-medium text-[#111827] placeholder:text-[#D1D5DB] outline-none focus:border-[#111827]"
+        />
+      </div>
+      <Button
+        variant="primary"
+        onClick={handleReschedule}
+        disabled={!rescheduleDate}
+      >
+        Reschedule
+      </Button>
+    </BottomSheet>
+  );
+
+  const renderCalloutChargeSheet = () => (
+    <BottomSheet
+      isOpen={sheet === 'callout_charge'}
+      onClose={() => { setSheet(null); setCalloutDesc('Callout charge'); setCalloutAmount(profile?.callout_charge ? String(profile.callout_charge) : '75'); }}
+      title="Charge callout"
+      subtitle="Charge for arriving when customer wasn't home"
+    >
+      <div className="mb-3">
+        <label className="block text-[10px] font-bold uppercase tracking-[0.4px] text-[#9CA3AF] mb-1">
+          Description
+        </label>
+        <input
+          type="text"
+          value={calloutDesc}
+          onChange={(e) => setCalloutDesc(e.target.value)}
+          placeholder="e.g. Callout charge"
+          className="w-full h-[48px] px-3.5 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] font-medium text-[#111827] placeholder:text-[#D1D5DB] outline-none focus:border-[#111827]"
+        />
+      </div>
+      <div className="mb-4">
+        <label className="block text-[10px] font-bold uppercase tracking-[0.4px] text-[#9CA3AF] mb-1">
+          Amount
+        </label>
+        <div className="relative">
+          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[16px] font-medium text-[#111827]">£</span>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={calloutAmount}
+            onChange={(e) => setCalloutAmount(e.target.value)}
+            placeholder="0.00"
+            className="w-full h-[48px] pl-8 pr-3.5 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] font-medium text-[#111827] placeholder:text-[#D1D5DB] outline-none focus:border-[#111827]"
+          />
+        </div>
+      </div>
+      <Button
+        variant="primary"
+        onClick={handleCalloutCharge}
+        disabled={!calloutDesc.trim() || !calloutAmount || parseFloat(calloutAmount) <= 0 || isNaN(parseFloat(calloutAmount))}
+      >
+        Create invoice
+      </Button>
+    </BottomSheet>
+  );
   /* ─── main render ─── */
 
   if (loading) {
@@ -886,10 +1249,15 @@ export default function JobDetail() {
       {job.status === 'booked' && renderBookedBody()}
       {job.status === 'in_progress' && renderInProgressBody()}
       {job.status === 'awaiting_payment' && renderAwaitingPaymentBody()}
+      {job.status === 'no_show' && renderNoShowBody()}
+      {job.status === 'paid' && renderPaidBody()}
+      {job.status === 'cancelled' && renderCancelledBody()}
+      {job.status === 'written_off' && renderWrittenOffBody()}
 
       {job.status === 'booked' && renderBookedFooter()}
       {job.status === 'in_progress' && renderInProgressFooter()}
       {job.status === 'awaiting_payment' && renderAwaitingPaymentFooter()}
+      {job.status === 'no_show' && renderNoShowFooter()}
 
       {renderCancelSheet()}
       {renderAddChargeSheet()}
@@ -897,6 +1265,8 @@ export default function JobDetail() {
       {renderMarkDoneSheet()}
       {renderMarkPaidSheet()}
       {renderSendReminderSheet()}
+      {renderRescheduleSheet()}
+      {renderCalloutChargeSheet()}
     </div>
   );
 }
