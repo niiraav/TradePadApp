@@ -107,7 +107,7 @@ export default function CustomerDetails({ customerId, onComplete, onCancel }: Cu
           <ChevronLeft size={22} color="#9CA3AF" className="-mt-px" />
           Back
         </button>
-        <span className="text-[16px] font-bold text-[#111827]">{customerId ? 'New quote' : 'Customer details'}</span>
+        <span className="text-[16px] font-bold text-[#111827]">New quote</span>
         <button
           onClick={onCancel}
           className="min-h-[44px] flex items-center text-[14px] text-[#9CA3AF] cursor-pointer"

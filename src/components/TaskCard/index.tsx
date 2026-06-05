@@ -1,8 +1,7 @@
 import React from 'react';
-import { X } from 'lucide-react';
+import { Phone } from 'lucide-react';
 import type { Job, Customer } from '../../lib/db';
 import { FlagBadge, type FlagType } from '../FlagBadge';
-import { Button } from '../Button';
 
 export type TaskType = 'overdue' | 'chase' | 'missed_call' | 'no_show' | 'stale_quote' | 'urgent_new';
 
@@ -12,13 +11,14 @@ export interface TaskCardProps {
   customer?: Customer;
   flag?: FlagType;
   flagDays?: number;
+  // For missed_call type only
   callerPhone?: string;
   callerName?: string;
   callTime?: string;
+  // Actions
   primaryAction?: { label: string; onClick: () => void };
   secondaryAction?: { label: string; onClick: () => void };
   tertiaryAction?: { label: string; onClick: () => void };
-  onDismiss?: () => void;
 }
 
 export const TaskCard: React.FC<TaskCardProps> = ({
@@ -33,38 +33,88 @@ export const TaskCard: React.FC<TaskCardProps> = ({
   primaryAction,
   secondaryAction,
   tertiaryAction,
-  onDismiss,
 }) => {
   const contextText =
     type === 'missed_call'
       ? callerName || callerPhone || 'Missed call'
       : customer && job
-      ? `${customer.name} · ${job.title}`
-      : customer?.name || 'Task';
+        ? `${customer.name} · ${job.title}`
+        : customer?.name || 'Task';
 
   const subText =
     type === 'missed_call'
       ? callTime || 'Missed call'
       : type === 'overdue'
-      ? 'Invoice payment overdue'
-      : type === 'chase'
-      ? 'Chase payment'
-      : type === 'stale_quote'
-      ? 'Quote still pending'
-      : type === 'no_show'
-      ? 'Customer did not show'
-      : type === 'urgent_new'
-      ? 'New enquiry'
-      : '';
+        ? 'Invoice payment overdue'
+        : type === 'chase'
+          ? 'Chase payment'
+          : type === 'stale_quote'
+            ? 'Quote still pending'
+            : type === 'no_show'
+              ? 'Customer did not show'
+              : type === 'urgent_new'
+                ? 'New enquiry'
+                : '';
 
+  /* ── Missed call card (wireframe S2 mc-card) ── */
+  if (type === 'missed_call') {
+    const actions = [
+      primaryAction,
+      secondaryAction,
+      tertiaryAction,
+    ].filter(Boolean) as Array<{ label: string; onClick: () => void }>;
+
+    return (
+      <div className="bg-white border border-[#D1D5DB] rounded-[10px] overflow-hidden mb-5">
+        {/* Header row */}
+        <div className="flex items-center gap-2.5 px-3.5 py-3">
+          <Phone size={18} className="text-[#6B7280] shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="text-[14px] font-semibold text-[#111827] truncate">
+              {callerPhone || 'Missed call'}
+            </div>
+            {subText && (
+              <div className="text-[11px] text-[#9CA3AF] mt-0.5">{subText}</div>
+            )}
+          </div>
+        </div>
+
+        {/* Action row with border separators */}
+        {actions.length > 0 && (
+          <div className="flex border-t border-[#F3F4F6]">
+            {actions.map((action, i) => {
+              const isPrimary = i === 0 || i === 1;
+              const isMuted = i === 2;
+              return (
+                <button
+                  key={i}
+                  onClick={action.onClick}
+                  className={`
+                    flex-1 h-[46px] flex items-center justify-center
+                    text-[13px] font-semibold cursor-pointer
+                    border-r border-[#F3F4F6] last:border-r-0
+                    ${isPrimary ? 'text-[#111827]' : ''}
+                    ${isMuted ? 'text-[#9CA3AF] font-normal' : ''}
+                  `}
+                >
+                  {action.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  /* ── Generic card (non-missed_call types) ── */
   const allActions = [primaryAction, secondaryAction, tertiaryAction].filter(Boolean) as Array<{
     label: string;
     onClick: () => void;
   }>;
 
   return (
-    <div className="bg-white border border-[#E5E7EB] rounded-xl p-3.5 px-4">
-      {/* Top row */}
+    <div className="bg-white border border-[#E5E7EB] rounded-xl px-4 py-3.5">
       <div className="flex justify-between items-start">
         <div className="flex-1 min-w-0">
           {flag && (
@@ -79,30 +129,18 @@ export const TaskCard: React.FC<TaskCardProps> = ({
             <div className="text-xs text-[#9CA3AF] mt-1">{subText}</div>
           )}
         </div>
-        {onDismiss && (
-          <button
-            onClick={onDismiss}
-            className="w-7 h-7 flex items-center justify-center shrink-0"
-            aria-label="Dismiss"
-          >
-            <X size={16} color="#9CA3AF" />
-          </button>
-        )}
       </div>
 
-      {/* Action row */}
       {allActions.length > 0 && (
         <div className="mt-3 flex gap-2 flex-wrap">
           {allActions.map((action, i) => (
-            <div key={i} className={allActions.length > 1 ? 'flex-1' : ''}>
-              <Button
-                variant={i === 0 ? 'secondary' : 'secondary'}
-                onClick={action.onClick}
-                fullWidth={allActions.length > 1}
-              >
-                {action.label}
-              </Button>
-            </div>
+            <button
+              key={i}
+              onClick={action.onClick}
+              className="h-[46px] px-4 rounded-lg border border-[#D1D5DB] text-[13px] font-semibold text-[#111827] bg-white cursor-pointer"
+            >
+              {action.label}
+            </button>
           ))}
         </div>
       )}

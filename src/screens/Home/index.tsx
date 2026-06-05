@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Check, MessageCircle, Banknote, CreditCard, AlertTriangle, ChevronRight } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { db, type Job, type Customer, type LineItem, type WorkLogEntry, type Profile } from '../../lib/db';
@@ -10,6 +10,7 @@ import { TodayStrip } from '../../components/TodayStrip';
 import { TabBar } from '../../components/TabBar';
 import { BottomSheet, SheetRow } from '../../components/BottomSheet';
 import { Button } from '../../components/Button';
+import { TaskCard } from '../../components/TaskCard';
 
 /* --- helpers --- */
 
@@ -50,6 +51,12 @@ function formatShortDate(d: Date): string {
   return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
+function timeAgo(minutes: number): string {
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes} min ago`;
+  return `${Math.floor(minutes / 60)}h ago`;
+}
+
 /* --- types --- */
 
 type Tab = 'today' | 'tasks';
@@ -61,6 +68,8 @@ type SheetState =
   | 'mark_done_deposit'
   | 'not_home';
 
+type TaskType = 'overdue' | 'chase' | 'missed_call' | 'no_show' | 'stale_quote' | 'urgent_new';
+
 interface TaskItem {
   id: string;
   jobId: string;
@@ -69,16 +78,23 @@ interface TaskItem {
   tag: string;
   amount: string;
   isL2: boolean;
+  type: TaskType;
+  phone?: string;
+  callTime?: string;
+  flag?: 'urgent_new' | 'overdue' | 'chase' | 'stale' | 'no_show';
+  flagDays?: number;
 }
 
 /* --- component --- */
 
 export default function Home() {
   const navigate = useNavigate();
+  const location = useLocation();
   const userId = useAppStore((s) => s.userId);
 
-  /* tabs */
-  const [activeTab, setActiveTab] = useState<Tab>('today');
+  /* tabs — read initialTab from route state */
+  const routeState = (location.state as { initialTab?: Tab } | null) || {};
+  const [activeTab, setActiveTab] = useState<Tab>(routeState.initialTab || 'today');
 
   /* data */
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -186,7 +202,6 @@ export default function Home() {
   }, [activeJob, tick]);
 
   const totalOwed = useMemo(() => {
-    // Sum all line items for jobs that are awaiting_payment
     let owed = 0;
     jobs.forEach((j) => {
       if (j.status === 'awaiting_payment') {
@@ -218,6 +233,7 @@ export default function Home() {
             ? new Date(j.scheduled_start).toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase()
             : '',
           isL2: true,
+          type: 'no_show',
         });
       }
 
@@ -230,12 +246,34 @@ export default function Home() {
           tag: 'Overdue',
           amount: `£${formatAmount(total)}`,
           isL2: true,
+          type: 'overdue',
+          flag: 'overdue',
+          flagDays: daysSince(j.invoice_sent_at),
         });
       }
 
       if (j.status === 'enquiry' && j.created_at) {
         const ageMs = Date.now() - new Date(j.created_at).getTime();
-        if (ageMs < 2 * 60 * 60 * 1000) {
+        const ageMinutes = Math.floor(ageMs / (1000 * 60));
+
+        if (j.title === 'Missed call') {
+          // Missed calls go to L3 per SCREEN-SPECS.md
+          const isUrgent = ageMs < 2 * 60 * 60 * 1000;
+          items.push({
+            id: `missed_${j.id}`,
+            jobId: j.id,
+            customerName: c.name,
+            jobTitle: j.title,
+            tag: 'Missed call',
+            amount: c.phone || '',
+            isL2: false,
+            type: 'missed_call',
+            phone: c.phone,
+            callTime: timeAgo(ageMinutes),
+            flag: isUrgent ? 'urgent_new' : undefined,
+          });
+        } else if (ageMs < 2 * 60 * 60 * 1000) {
+          // Urgent new enquiries (not missed calls) go to L2
           items.push({
             id: `urgent_${j.id}`,
             jobId: j.id,
@@ -244,6 +282,8 @@ export default function Home() {
             tag: 'New',
             amount: `£${formatAmount(total)}`,
             isL2: true,
+            type: 'urgent_new',
+            flag: 'urgent_new',
           });
         }
       }
@@ -260,6 +300,9 @@ export default function Home() {
             tag: `Chase · ${days}d`,
             amount: `£${formatAmount(total)}`,
             isL2: false,
+            type: 'chase',
+            flag: 'chase',
+            flagDays: days,
           });
         }
       }
@@ -274,6 +317,9 @@ export default function Home() {
           tag: `Stale · ${days}d`,
           amount: `£${formatAmount(total)}`,
           isL2: false,
+          type: 'stale_quote',
+          flag: 'stale',
+          flagDays: days,
         });
       }
     });
@@ -283,6 +329,8 @@ export default function Home() {
 
   const l2Tasks = tasks.filter((t) => t.isL2);
   const l3Tasks = tasks.filter((t) => !t.isL2);
+  const missedCallTasks = tasks.filter((t) => t.type === 'missed_call');
+  const l3ListTasks = l3Tasks.filter((t) => t.type !== 'missed_call');
   const l2Count = l2Tasks.length;
 
   /* --- helpers --- */
@@ -599,6 +647,7 @@ export default function Home() {
   const renderTasks = () => {
     return (
       <div className="flex-1 px-4 pt-4 pb-4 overflow-y-auto">
+        {/* L2 list rows */}
         {l2Tasks.length > 0 && (
           <>
             <div className="flex items-center justify-between mb-2">
@@ -611,7 +660,7 @@ export default function Home() {
                 <div
                   key={task.id}
                   onClick={() => navigate(`/jobs/${task.jobId}`)}
-                  className="flex items-center px-4 py-3 gap-2.5 border-b border-[#F3F4F6] cursor-pointer min-h-[52px] last:border-b-0"
+                  className="flex items-center px-4 py-3 gap-2.5 border-b border-[#F3F4F6] cursor-pointer min-h-[56px] last:border-b-0"
                 >
                   <span className="text-[10px] font-bold text-[#111827] bg-[#F3F4F6] px-[7px] py-[2px] rounded-[4px] uppercase tracking-wide whitespace-nowrap shrink-0">
                     {task.tag}
@@ -629,25 +678,76 @@ export default function Home() {
           </>
         )}
 
-        {l3Tasks.length > 0 && (
+        {/* L3: Missed call TaskCards */}
+        {missedCallTasks.length > 0 && (
           <>
             <div className="flex items-center justify-between mb-2">
               <span className="text-[10px] font-bold text-[#6B7280] uppercase tracking-[0.7px]">
                 When you get a minute
               </span>
-              <button
-                onClick={() => navigate('/jobs')}
-                className="text-[12px] text-[#6B7280] cursor-pointer"
-              >
-                See all
-              </button>
+            </div>
+            <div className="flex flex-col gap-3 mb-5">
+              {missedCallTasks.map((task) => (
+                <TaskCard
+                  key={task.id}
+                  type="missed_call"
+                  callerPhone={task.phone}
+                  callerName={task.customerName === 'Unknown' ? undefined : task.customerName}
+                  callTime={`Missed call · ${task.callTime || ''}`}
+                  flag={task.flag}
+                  flagDays={task.flagDays}
+                  primaryAction={{
+                    label: 'Call back',
+                    onClick: () => {
+                      if (task.phone) window.open(`tel:${task.phone}`, '_self');
+                    }
+                  }}
+                  secondaryAction={{
+                    label: 'Create quote',
+                    onClick: () => {
+                      const job = jobs.find(j => j.id === task.jobId);
+                      if (job) {
+                        navigate('/quote', { state: { entryPoint: 'task', customerId: job.customer_id } });
+                      }
+                    }
+                  }}
+                  tertiaryAction={{
+                    label: 'Dismiss',
+                    onClick: async () => {
+                      await db.jobs.delete(task.jobId);
+                      await db.work_log.where('job_id').equals(task.jobId).delete();
+                      await db.line_items.where('job_id').equals(task.jobId).delete();
+                      refresh();
+                    }
+                  }}
+                />
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* L3 list rows (non-missed-call) */}
+        {l3ListTasks.length > 0 && (
+          <>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] font-bold text-[#6B7280] uppercase tracking-[0.7px]">
+                When you get a minute
+              </span>
+              {missedCallTasks.length === 0 && (
+                <button
+                  onClick={() => navigate('/jobs')}
+                  className="text-[12px] text-[#6B7280] cursor-pointer"
+                >
+                  See all
+                </button>
+              )}
             </div>
             <div className="border border-[#E5E7EB] rounded-[10px] overflow-hidden mb-5">
-              {l3Tasks.map((task) => (
+              {l3ListTasks.map((task) => (
                 <div
                   key={task.id}
                   onClick={() => navigate(`/jobs/${task.jobId}`)}
-                  className="flex items-center px-4 py-2.5 gap-2.5 border-b border-[#F3F4F6] cursor-pointer min-h-[48px] last:border-b-0"
+                  className="flex items-center px-4 py-2.5 gap-2.5 border-b border-[#F3F4F6] cursor-pointer min-h-[56px] last:border-b-0"
                 >
                   <span className="text-[10px] font-semibold text-[#9CA3AF] bg-[#F9FAFB] border border-[#E5E7EB] px-[7px] py-[2px] rounded-[4px] uppercase whitespace-nowrap shrink-0">
                     {task.tag}
@@ -745,13 +845,13 @@ export default function Home() {
         <div className="flex gap-2 px-4 py-2.5 pb-[calc(10px_+_env(safe-area-inset-bottom))]">
           <button
             onClick={() => navigate('/quote')}
-            className="flex-1 h-[44px] bg-white border border-[#D1D5DB] rounded-lg text-[13px] font-semibold text-[#111827] cursor-pointer"
+            className="flex-1 h-[46px] bg-white border border-[#D1D5DB] rounded-lg text-[13px] font-semibold text-[#111827] cursor-pointer"
           >
             + New Quote
           </button>
           <button
             onClick={() => navigate('/quote', { state: { entryPoint: 'missed_call' } })}
-            className="flex-1 h-[44px] bg-white border border-[#D1D5DB] rounded-lg text-[13px] font-semibold text-[#111827] cursor-pointer"
+            className="flex-1 h-[46px] bg-white border border-[#D1D5DB] rounded-lg text-[13px] font-semibold text-[#111827] cursor-pointer"
           >
             Log Missed Call
           </button>

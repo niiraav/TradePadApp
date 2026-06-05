@@ -83,7 +83,7 @@ export default function Quote() {
   /* ─── handlers ─── */
 
   const handleMissedCallDone = () => {
-    navigate('/', { replace: true });
+    navigate('/', { replace: true, state: { initialTab: 'tasks' } });
   };
 
   const handleCustomerDetailsComplete = async (data: { id: string; name: string; phone: string; address?: string }) => {
