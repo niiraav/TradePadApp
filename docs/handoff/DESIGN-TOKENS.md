@@ -15,7 +15,7 @@ Aligned with Cal `{colors.ink}` / `{colors.canvas}` system. Near-black on white 
 
 | Token | Hex | Cal equivalent | Usage |
 |---|---|---|---|
-| `color-black` | `#111111` | `{colors.primary}` / `{colors.ink}` | Primary text, buttons, borders-active, headings |
+| `color-black` | `#111827` | `{colors.primary}` / `{colors.ink}` | Primary text, buttons, borders-active, headings |
 | `color-dark` | `#374151` | `{colors.body}` | Body text, secondary content |
 | `color-mid` | `#6B7280` | `{colors.muted}` | Muted text, icons, secondary labels |
 | `color-muted` | `#898989` | `{colors.muted-soft}` | Placeholder text, hints, disabled |
@@ -449,7 +449,7 @@ export default {
       colors: {
         // Aligned with Cal {colors.*} — see DESIGN.md
         brand: {
-          black:       '#111111',   // Cal {colors.primary} / {colors.ink}
+          black:       '#111827',   // Cal {colors.primary} / {colors.ink}
           dark:        '#374151',   // Cal {colors.body}
           mid:         '#6B7280',   // Cal {colors.muted}
           muted:       '#898989',   // Cal {colors.muted-soft}

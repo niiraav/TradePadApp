@@ -80,7 +80,7 @@ export const InlineEditRow: React.FC<InlineEditRowProps> = ({
               onChange={(e) => setInputValue(e.target.value)}
               onBlur={handleBlur}
               placeholder={placeholder}
-              className="text-sm text-[#111827] text-right min-w-[120px] bg-transparent border-none outline-none p-0"
+              className="text-base text-[#111827] text-right min-w-[120px] bg-transparent border-none outline-none p-0"
             />
             <button
               onClick={handleDone}
@@ -91,7 +91,7 @@ export const InlineEditRow: React.FC<InlineEditRowProps> = ({
           </>
         ) : (
           <>
-            <span className="text-sm font-medium text-[#111827]">{value}</span>
+            <span className="text-base font-medium text-[#111827]">{value}</span>
             <Pencil size={14} color="#9CA3AF" />
           </>
         )}

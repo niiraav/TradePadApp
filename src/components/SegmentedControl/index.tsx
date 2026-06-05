@@ -13,7 +13,7 @@ export const SegmentedControl: React.FC<SegmentedControlProps> = ({
   onChange,
   size = 'md',
 }) => {
-  const height = size === 'sm' ? 'h-[34px]' : 'h-[36px]';
+  const height = 'min-h-[44px]';
   const fontSize = size === 'sm' ? 'text-xs' : 'text-[13px]';
 
   return (
