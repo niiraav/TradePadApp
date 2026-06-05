@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  ChevronLeft, Phone, MessageCircle, Clock, Banknote, Pencil, Building2,
+  ChevronLeft, Phone, MessageCircle, MessageSquare, Clock, Banknote, Pencil, Building2,
 } from 'lucide-react';
-import { db, type Job, type Customer, type LineItem, type WorkLogEntry, type Profile } from '../../lib/db';
+import { db, type Job, type Customer, type LineItem, type WorkLogEntry, type Profile, type Payment } from '../../lib/db';
 import { useAppStore } from '../../store/useAppStore';
 import { BottomSheet, SheetRow } from '../../components/BottomSheet';
 import { Button } from '../../components/Button';
@@ -60,7 +60,9 @@ type SheetState =
   | 'cancel'
   | 'add_charge'
   | 'mark_done'
-  | 'add_note';
+  | 'add_note'
+  | 'mark_paid'
+  | 'send_reminder';
 
 /* ─── component ─── */
 
@@ -80,6 +82,8 @@ export default function JobDetail() {
   const [chargeDesc, setChargeDesc] = useState('');
   const [chargeAmount, setChargeAmount] = useState('');
   const [noteText, setNoteText] = useState('');
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [reminderText, setReminderText] = useState('');
 
   /* ─── load data ─── */
   const refresh = useCallback(async () => {
@@ -99,6 +103,10 @@ export default function JobDetail() {
 
     const p = await db.profiles.get(userId);
     setProfile(p || null);
+
+    const pmts = await db.payments.where('job_id').equals(jobId).toArray();
+    setPayments(pmts);
+
     setLoading(false);
   }, [jobId, userId]);
 
@@ -293,6 +301,92 @@ export default function JobDetail() {
       await addToSyncQueue('payments', payId, { job_id: job.id, type: 'full', method, amount: total });
       await addToSyncQueue('jobs', job.id, { status: 'paid', actual_end: n, updated_at: n });
     }
+    setSheet(null);
+    refresh();
+  };
+
+  const handleMarkAsPaid = async (method: 'cash' | 'bank_transfer' | 'other') => {
+    if (!job) return;
+    const n = now();
+    const paymentType = payments.length > 0 ? 'balance' : 'full';
+    const payId = crypto.randomUUID();
+    await db.payments.add({
+      id: payId,
+      job_id: job.id,
+      type: paymentType,
+      method,
+      amount: total,
+      recorded_at: n,
+      created_at: n,
+      _sync_status: 'pending',
+    });
+    await db.jobs.update(job.id, {
+      status: 'paid',
+      updated_at: n,
+      _sync_status: 'pending',
+    });
+    await db.work_log.add({
+      id: crypto.randomUUID(),
+      job_id: job.id,
+      type: 'status_change',
+      description: `Payment recorded — ${method === 'cash' ? 'Cash' : method === 'bank_transfer' ? 'Bank Transfer' : 'Other'} · £${total.toFixed(2)}`,
+      created_at: n,
+      _sync_status: 'pending',
+    });
+    await addToSyncQueue('payments', payId, { job_id: job.id, type: paymentType, method, amount: total });
+    await addToSyncQueue('jobs', job.id, { status: 'paid', updated_at: n });
+    setSheet(null);
+    refresh();
+  };
+
+  const handleWriteOff = async () => {
+    if (!job) return;
+    const n = now();
+    await db.jobs.update(job.id, {
+      status: 'written_off',
+      updated_at: n,
+      _sync_status: 'pending',
+    });
+    await db.work_log.add({
+      id: crypto.randomUUID(),
+      job_id: job.id,
+      type: 'status_change',
+      description: `Job written off — £${total.toFixed(2)}`,
+      created_at: n,
+      _sync_status: 'pending',
+    });
+    await addToSyncQueue('jobs', job.id, { status: 'written_off', updated_at: n });
+    refresh();
+  };
+
+  const handleSendReminder = async (method: 'whatsapp' | 'sms') => {
+    if (!job || !customer) return;
+    const n = now();
+    const defaultText = `Hi ${customer.name}, just a reminder about the invoice for ${job.title}. Amount due: £${total.toFixed(2)}. Thanks, ${profile?.full_name?.split(' ')[0] || 'Dave'}`;
+    const body = reminderText || defaultText;
+    const encodedBody = encodeURIComponent(body);
+
+    if (method === 'whatsapp') {
+      const phone = customer.phone.replace(/^\+/, '').replace(/^0/, '44');
+      window.open(`https://wa.me/${phone}?text=${encodedBody}`, '_blank');
+    } else {
+      window.open(`sms:${customer.phone}?body=${encodedBody}`, '_blank');
+    }
+
+    await db.work_log.add({
+      id: crypto.randomUUID(),
+      job_id: job.id,
+      type: 'status_change',
+      description: `Reminder sent via ${method === 'whatsapp' ? 'WhatsApp' : 'SMS'}`,
+      created_at: n,
+      _sync_status: 'pending',
+    });
+    await db.jobs.update(job.id, {
+      invoice_sent_at: n,
+      updated_at: n,
+      _sync_status: 'pending',
+    });
+    await addToSyncQueue('jobs', job.id, { invoice_sent_at: n, updated_at: n });
     setSheet(null);
     refresh();
   };
@@ -512,6 +606,62 @@ export default function JobDetail() {
     </div>
   );
 
+  const renderAwaitingPaymentBody = () => {
+    if (!job || !customer) return null;
+    const days = job.invoice_sent_at
+      ? Math.floor((Date.now() - new Date(job.invoice_sent_at).getTime()) / (1000 * 60 * 60 * 24))
+      : 0;
+
+    return (
+      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-2">
+        {renderStatusBadge()}
+
+        {/* Amount card */}
+        <div className="border border-[#FDE68A] bg-[#FFFBEB] rounded-xl px-5 py-6 text-center mb-5">
+          <div className="text-[11px] font-bold uppercase tracking-[0.5px] text-[#B45309] mb-2">
+            Total due
+          </div>
+          <div className="text-[36px] font-extrabold text-[#111827] tracking-tight">
+            £{total.toFixed(2)}
+          </div>
+          <div className="text-[12px] text-[#B45309] mt-2">
+            {job.invoice_sent_at ? `Invoice sent · ${days} day${days !== 1 ? 's' : ''} ago` : 'Payment pending'}
+          </div>
+        </div>
+
+        {/* Invoice items (locked) */}
+        <div className="flex items-center justify-between mb-2.5">
+          <span className="text-[10px] font-bold text-[#6B7280] uppercase tracking-[0.7px]">Invoice items</span>
+        </div>
+        <div className="border border-[#E5E7EB] rounded-[10px] overflow-hidden mb-5">
+          {lineItems.map((item) => (
+            <InvoiceItemRow key={item.id} item={item} showRemove={false} />
+          ))}
+          <InvoiceTotalRow total={total} />
+        </div>
+      </div>
+    );
+  };
+
+  const renderAwaitingPaymentFooter = () => (
+    <div className="sticky bottom-0 z-30 bg-white border-t border-[#F3F4F6] shadow-sheet">
+      <div className="flex flex-col gap-2 px-4 py-3 pb-[calc(32px_+_env(safe-area-inset-bottom))]">
+        <Button variant="primary" onClick={() => setSheet('mark_paid')}>
+          Mark as Paid
+        </Button>
+        <Button variant="secondary" onClick={() => setSheet('send_reminder')}>
+          Send reminder
+        </Button>
+        <button
+          onClick={handleWriteOff}
+          className="min-h-[44px] text-[12px] text-[#9CA3AF] cursor-pointer underline underline-offset-2 text-center"
+        >
+          Write off
+        </button>
+      </div>
+    </div>
+  );
+
   /* ─── sheets ─── */
 
   const renderCancelSheet = () => (
@@ -646,6 +796,67 @@ export default function JobDetail() {
     </BottomSheet>
   );
 
+  const renderMarkPaidSheet = () => (
+    <BottomSheet
+      isOpen={sheet === 'mark_paid'}
+      onClose={() => setSheet(null)}
+      title="How were you paid?"
+      subtitle={job && customer ? `${customer.name} · ${job.title} · £${total.toFixed(2)}` : undefined}
+    >
+      <SheetRow
+        icon={<Banknote size={18} color="#374151" />}
+        label="Cash"
+        onTap={() => handleMarkAsPaid('cash')}
+      />
+      <SheetRow
+        icon={<Building2 size={18} color="#374151" />}
+        label="Bank Transfer"
+        onTap={() => handleMarkAsPaid('bank_transfer')}
+      />
+      <SheetRow
+        icon={<Pencil size={18} color="#374151" />}
+        label="Other"
+        sublabel="Entered manually"
+        onTap={() => handleMarkAsPaid('other')}
+        isLast
+      />
+    </BottomSheet>
+  );
+
+  const renderSendReminderSheet = () => {
+    if (!job || !customer) return null;
+    const defaultText = `Hi ${customer.name}, just a reminder about the invoice for ${job.title}. Amount due: £${total.toFixed(2)}. Thanks, ${profile?.full_name?.split(' ')[0] || 'Dave'}`;
+
+    return (
+      <BottomSheet
+        isOpen={sheet === 'send_reminder'}
+        onClose={() => setSheet(null)}
+        title={`Send reminder to ${customer.name}?`}
+      >
+        <div className="mb-3">
+          <textarea
+            value={reminderText || defaultText}
+            onChange={(e) => setReminderText(e.target.value)}
+            rows={4}
+            className="w-full px-3.5 py-3 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] font-medium text-[#374151] placeholder:text-[#D1D5DB] outline-none focus:border-[#111827] resize-none leading-relaxed"
+          />
+          <p className="text-[10px] text-[#9CA3AF] text-right mt-1">Tap to edit before sending</p>
+        </div>
+        <SheetRow
+          icon={<MessageCircle size={18} color="#374151" />}
+          label="Send via WhatsApp"
+          onTap={() => handleSendReminder('whatsapp')}
+        />
+        <SheetRow
+          icon={<MessageSquare size={18} color="#374151" />}
+          label="Send via SMS"
+          onTap={() => handleSendReminder('sms')}
+          isLast
+        />
+      </BottomSheet>
+    );
+  };
+
   /* ─── main render ─── */
 
   if (loading) {
@@ -674,14 +885,18 @@ export default function JobDetail() {
 
       {job.status === 'booked' && renderBookedBody()}
       {job.status === 'in_progress' && renderInProgressBody()}
+      {job.status === 'awaiting_payment' && renderAwaitingPaymentBody()}
 
       {job.status === 'booked' && renderBookedFooter()}
       {job.status === 'in_progress' && renderInProgressFooter()}
+      {job.status === 'awaiting_payment' && renderAwaitingPaymentFooter()}
 
       {renderCancelSheet()}
       {renderAddChargeSheet()}
       {renderAddNoteSheet()}
       {renderMarkDoneSheet()}
+      {renderMarkPaidSheet()}
+      {renderSendReminderSheet()}
     </div>
   );
 }
