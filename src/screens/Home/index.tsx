@@ -807,7 +807,7 @@ export default function Home() {
         </div>
         <div className="text-right">
           <span className="text-[22px] font-extrabold text-[#111827] block">
-            £{totalOwed.toLocaleString('en-GB')}
+            £{Number(totalOwed).toFixed(2)}
           </span>
           <span className="text-[11px] text-[#9CA3AF] block mt-0.5">
             owed to you
@@ -877,9 +877,12 @@ export default function Home() {
         title={`Running late to ${selectedCustomer?.name || 'the customer'}?`}
       >
         <div className="bg-[#F9FAFB] border border-[#E5E7EB] rounded-lg p-3 mb-4">
-          <p className="text-[13px] text-[#374151] italic leading-relaxed">
-            "{lateMsg}"
-          </p>
+          <textarea
+            value={lateMsg}
+            onChange={(e) => setLateMsg(e.target.value)}
+            className="w-full text-[13px] text-[#374151] italic leading-relaxed bg-transparent border-none outline-none resize-none p-0"
+            rows={3}
+          />
         </div>
         <div className="flex flex-col gap-2">
           <Button

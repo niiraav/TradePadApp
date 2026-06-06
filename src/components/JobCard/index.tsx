@@ -62,8 +62,8 @@ export const JobCard: React.FC<JobCardProps> = ({
 
       {/* Customer row */}
       <div className="mt-2">
-        <h3 className="text-[18px] font-extrabold text-[#111827]">{customer.name}</h3>
-        <p className="text-[13px] text-[#6B7280] mt-0.5">{job.title}</p>
+        <h3 className="text-[18px] font-extrabold text-[#111827] truncate">{customer.name}</h3>
+        <p className="text-[13px] text-[#6B7280] mt-0.5 truncate">{job.title}</p>
       </div>
 
       {/* Meta row */}
