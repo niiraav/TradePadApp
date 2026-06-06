@@ -64,7 +64,8 @@ type SheetState =
   | 'mark_paid'
   | 'send_reminder'
   | 'reschedule'
-  | 'callout_charge';
+  | 'callout_charge'
+  | 'booking_confirmation';
 
 /* ─── component ─── */
 
@@ -99,6 +100,7 @@ export default function JobDetail() {
   const [calloutDesc, setCalloutDesc] = useState('Callout charge');
   const [calloutAmount, setCalloutAmount] = useState('');
   const [workLogExpanded, setWorkLogExpanded] = useState(false);
+  const [bookingMessage, setBookingMessage] = useState('');
 
   /* ─── load data ─── */
   const refresh = useCallback(async () => {
@@ -371,7 +373,7 @@ export default function JobDetail() {
   
 
   const handleMarkAsBooked = async () => {
-    if (!job) return;
+    if (!job || !customer) return;
     const n = now();
     await db.jobs.update(job.id, {
       status: 'booked',
@@ -388,6 +390,21 @@ export default function JobDetail() {
     });
     await addToSyncQueue('jobs', job.id, { status: 'booked', updated_at: n });
     refresh();
+
+    // Generate booking confirmation message
+    const customerFirstName = customer.name.split(' ')[0] || 'there';
+    const dateStr = job.scheduled_start
+      ? new Date(job.scheduled_start).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
+      : 'a date to be confirmed';
+    const timeStr = job.scheduled_start
+      ? new Date(job.scheduled_start).toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase().replace(':00', '')
+      : '';
+    const business = profile?.business_name || 'Your tradesperson';
+    const msg = timeStr
+      ? `Hi ${customerFirstName}, your booking for ${job.title} is confirmed for ${dateStr} at ${timeStr}. See you then! — ${business}`
+      : `Hi ${customerFirstName}, your booking for ${job.title} is confirmed for ${dateStr}. See you then! — ${business}`;
+    setBookingMessage(msg);
+    setSheet('booking_confirmation');
   };
 
   const handleReschedule = async () => {
@@ -412,6 +429,38 @@ export default function JobDetail() {
     setRescheduleDate('');
     setSheet(null);
     refresh();
+  };
+
+  const handleSendBookingConfirmation = async (method: 'whatsapp' | 'sms') => {
+    if (!customer || !bookingMessage) return;
+    const phone = customer.phone.replace(/\D/g, '');
+    const encoded = encodeURIComponent(bookingMessage);
+
+    if (method === 'whatsapp') {
+      window.open(`https://wa.me/${phone}?text=${encoded}`, '_blank');
+    } else if (method === 'sms') {
+      window.open(`sms:${customer.phone}?body=${encoded}`, '_self');
+    }
+
+    const n = now();
+    const logId = crypto.randomUUID();
+    await db.work_log.add({
+      id: logId,
+      job_id: jobId!,
+      type: 'note',
+      description: `Booking confirmation sent via ${method === 'whatsapp' ? 'WhatsApp' : 'SMS'}`,
+      created_at: n,
+      _sync_status: 'pending',
+    });
+    await addToSyncQueue('work_log', logId, {
+      id: logId,
+      job_id: jobId!,
+      type: 'note',
+      description: `Booking confirmation sent via ${method === 'whatsapp' ? 'WhatsApp' : 'SMS'}`,
+      created_at: n,
+    });
+
+    setSheet(null);
   };
 
   const handleCalloutCharge = async () => {
@@ -1320,6 +1369,37 @@ export default function JobDetail() {
       </Button>
     </BottomSheet>
   );
+
+  const renderBookingConfirmationSheet = () => (
+    <BottomSheet
+      isOpen={sheet === 'booking_confirmation'}
+      onClose={() => setSheet(null)}
+      title="Send booking confirmation?"
+    >
+      <div className="mb-4">
+        <div className="bg-[#F9FAFB] border border-[#E5E7EB] rounded-[10px] p-3.5">
+          <p className="text-[13px] text-[#374151] leading-relaxed whitespace-pre-line">{bookingMessage}</p>
+        </div>
+      </div>
+      <div className="flex flex-col gap-2">
+        <Button variant="primary" onClick={() => handleSendBookingConfirmation('whatsapp')} fullWidth>
+          <MessageCircle size={18} className="mr-2" />
+          Send via WhatsApp
+        </Button>
+        <Button variant="secondary" onClick={() => handleSendBookingConfirmation('sms')} fullWidth>
+          <Phone size={18} className="mr-2" />
+          Send via SMS
+        </Button>
+        <button
+          onClick={() => setSheet(null)}
+          className="w-full h-[46px] flex items-center justify-center text-[14px] font-medium text-[#9CA3AF] cursor-pointer"
+        >
+          Skip — already told them
+        </button>
+      </div>
+    </BottomSheet>
+  );
+
   /* ─── main render ─── */
 
   if (loading) {
@@ -1369,6 +1449,7 @@ export default function JobDetail() {
       {renderSendReminderSheet()}
       {renderRescheduleSheet()}
       {renderCalloutChargeSheet()}
+      {renderBookingConfirmationSheet()}
     </div>
   );
 }
