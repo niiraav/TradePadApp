@@ -1,10 +1,10 @@
 import React from 'react';
-import { InvoiceItemRow, InvoiceTotalRow } from '../InvoiceItemRow';
 import type { LineItem } from '../../lib/db';
 
 export interface QuotePreviewCardProps {
   businessName: string;
   customerName: string;
+  customerPhone?: string;
   quoteNumber: string;
   jobTitle: string;
   lineItems: LineItem[];
@@ -12,73 +12,122 @@ export interface QuotePreviewCardProps {
   depositPct?: number;
   quoteValidDays: number;
   quoteSentDate?: Date;
+  scheduledStart?: string;
+  scheduledEnd?: string;
 }
 
-export const QuotePreviewCard: React.FC<QuotePreviewCardProps> = ({
-  businessName,
-  customerName,
-  quoteNumber,
-  jobTitle,
-  lineItems,
-  paymentTerms,
-  depositPct,
-  quoteValidDays,
-  quoteSentDate,
-}) => {
+export const QuotePreviewCard: React.FC<QuotePreviewCardProps> = (props) => {
+  const {
+    businessName,
+    customerName,
+    customerPhone,
+    quoteNumber,
+    jobTitle,
+    lineItems,
+    paymentTerms,
+    quoteValidDays,
+    quoteSentDate,
+    scheduledStart,
+    scheduledEnd,
+  } = props;
+
   const total = lineItems.reduce((sum, item) => sum + item.amount, 0);
-  const depositAmount = depositPct ? total * (depositPct / 100) : 0;
-  const balance = total - depositAmount;
 
   const termsLabel =
     paymentTerms === 'on_completion' ? 'On completion'
     : paymentTerms === 'deposit' ? 'Deposit + balance on completion'
     : 'Invoice after work';
 
+  const formatTime = (d: Date): string => {
+    const str = d.toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase();
+    return str.replace(':00', '');
+  };
+
+  const formatDateTime = (start?: string, end?: string): string => {
+    if (!start) return 'TBC';
+    const s = new Date(start);
+    const startStr = s.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+    const startTime = formatTime(s);
+    if (!end) return `${startStr} · ${startTime}`;
+    const e = new Date(end);
+    const endTime = formatTime(e);
+    return `${startStr} · ${startTime}–${endTime}`;
+  };
+
+  const validUntil = () => {
+    if (quoteSentDate) {
+      const d = new Date(quoteSentDate);
+      d.setDate(d.getDate() + quoteValidDays);
+      return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    }
+    const d = new Date();
+    d.setDate(d.getDate() + quoteValidDays);
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
+  const customerDisplay = customerPhone
+    ? `${customerName} · ${customerPhone}`
+    : customerName;
+
   return (
     <div className="border border-[#E5E7EB] rounded-xl overflow-hidden">
-      {/* Header */}
-      <div className="bg-[#F9FAFB] border-b border-[#E5E7EB] px-4 py-4">
-        <div className="text-[15px] font-bold text-[#111827]">{businessName}</div>
-        <div className="text-[13px] text-[#6B7280] mt-0.5">{customerName}</div>
-        <div className="text-xs text-[#9CA3AF] mt-0.5">{quoteNumber}</div>
+      {/* Header — white bg, ref + status badge */}
+      <div className="px-4 pt-3.5 pb-2.5 border-b border-[#F3F4F6]">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-[12px] font-medium text-[#9CA3AF]">
+            {quoteNumber ? `Quote #${quoteNumber}` : 'Quote'}
+          </span>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-[3px] rounded-md bg-[#EFF6FF] text-[#1D4ED8] text-[10px] font-bold uppercase tracking-[0.4px]">
+            <span className="w-[5px] h-[5px] rounded-full bg-[#1D4ED8]" />
+            Quoted
+          </span>
+        </div>
+        <div className="text-[18px] font-bold text-[#111827]">{jobTitle}</div>
+        <div className="text-[13px] text-[#6B7280] mt-0.5">{customerDisplay}</div>
       </div>
 
-      {/* Body */}
-      <div className="px-4 py-4">
-        <div className="text-sm font-bold text-[#111827]">{jobTitle}</div>
-
-        <div className="mt-4">
-          {lineItems.map((item) => (
-            <InvoiceItemRow key={item.id} item={item} />
-          ))}
+      {/* Info rows */}
+      <div className="border-b border-[#F3F4F6]">
+        <div className="flex justify-between items-center px-4 py-2.5 border-b border-[#F9FAFB]">
+          <span className="text-[13px] text-[#9CA3AF]">Date &amp; time</span>
+          <span className="text-[13px] font-medium text-[#111827] text-right">
+            {formatDateTime(scheduledStart, scheduledEnd)}
+          </span>
         </div>
+        <div className="flex justify-between items-center px-4 py-2.5 border-b border-[#F9FAFB]">
+          <span className="text-[13px] text-[#9CA3AF]">Payment</span>
+          <span className="text-[13px] font-medium text-[#111827] text-right">{termsLabel}</span>
+        </div>
+        <div className="flex justify-between items-center px-4 py-2.5">
+          <span className="text-[13px] text-[#9CA3AF]">Valid until</span>
+          <span className="text-[13px] font-medium text-[#111827] text-right">{validUntil()}</span>
+        </div>
+      </div>
 
-        <InvoiceTotalRow total={total} />
-
-        {depositPct !== undefined && depositPct > 0 && (
-          <div className="mt-2 space-y-1">
-            <div className="text-sm text-[#6B7280]">
-              Deposit due now: <span className="font-bold text-[#111827]">£{depositAmount.toFixed(2)}</span>
-            </div>
-            <div className="text-sm text-[#6B7280]">
-              Balance on completion: <span className="font-bold text-[#111827]">£{balance.toFixed(2)}</span>
-            </div>
+      {/* Items block */}
+      <div className="px-4 pt-3 pb-0">
+        {lineItems.map((item, idx) => (
+          <div
+            key={item.id}
+            className={`flex justify-between py-1.5 text-[13px] text-[#374151] ${
+              idx < lineItems.length - 1 ? 'border-b border-[#F9FAFB]' : ''
+            }`}
+          >
+            <span>{item.description}</span>
+            <span className="font-medium text-[#111827]">£{item.amount.toFixed(2)}</span>
           </div>
-        )}
+        ))}
+      </div>
 
-        <div className="mt-3 text-sm text-[#6B7280]">
-          Payment: <span className="font-bold text-[#111827]">{termsLabel}</span>
-        </div>
+      {/* Total row */}
+      <div className="flex justify-between items-center px-4 py-3 border-t-[1.5px] border-[#111827] mt-0">
+        <span className="text-[16px] font-bold text-[#111827]">Total</span>
+        <span className="text-[20px] font-extrabold text-[#111827]">£{total.toFixed(2)}</span>
+      </div>
 
-        <div className="mt-2 text-sm text-[#6B7280]">
-          Quote valid for {quoteValidDays} days
-        </div>
-
-        {quoteSentDate && (
-          <div className="mt-2 text-xs text-[#9CA3AF]">
-            Sent {quoteSentDate.toLocaleDateString('en-GB')}
-          </div>
-        )}
+      {/* Footer */}
+      <div className="px-4 py-3 border-t border-[#F3F4F6] text-[12px] text-[#9CA3AF] leading-relaxed">
+        {businessName}
       </div>
     </div>
   );

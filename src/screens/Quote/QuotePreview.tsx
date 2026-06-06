@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { ChevronLeft, MessageCircle, Clipboard, AlertTriangle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { ChevronLeft, MessageCircle, Clipboard, AlertTriangle, Phone } from 'lucide-react';
 import { db, type Job, type LineItem, type Customer, type Profile } from '../../lib/db';
 import { useAppStore } from '../../store/useAppStore';
 import { QuotePreviewCard } from '../../components/QuotePreviewCard';
@@ -23,6 +24,7 @@ interface QuotePreviewProps {
 /* ─── component ─── */
 
 export default function QuotePreview({ jobId, onSend, onSaveDraft, onBack }: QuotePreviewProps) {
+  const navigate = useNavigate();
   const userId = useAppStore((s) => s.userId);
   const [job, setJob] = useState<Job | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
@@ -49,8 +51,8 @@ export default function QuotePreview({ jobId, onSend, onSaveDraft, onBack }: Quo
 
       // Generate quote number if not set
       if (!j.quote_number) {
-        const count = await db.jobs.where('user_id').equals(userId).count();
-        const quoteNum = `Q-${String(count + 1).padStart(4, '0')}`;
+        const count = await db.jobs.where('user_id').equals(userId).and(j => !!j.quote_number).count();
+        const quoteNum = `Q-${String(count + 1001).padStart(4, '0')}`;
         const n = now();
         await db.jobs.update(jobId, { quote_number: quoteNum, updated_at: n, _sync_status: 'pending' });
         await db.sync_queue.add({
@@ -121,7 +123,7 @@ export default function QuotePreview({ jobId, onSend, onSaveDraft, onBack }: Quo
     if (!messageText && defaultMessage) {
       setMessageText(defaultMessage);
     }
-  }, [defaultMessage, messageText]);
+  }, [defaultMessage]);
 
   /* ─── handlers ─── */
   const handleOpenSend = () => {
@@ -154,6 +156,10 @@ export default function QuotePreview({ jobId, onSend, onSaveDraft, onBack }: Quo
   const handleSheetDraft = () => {
     setShowSendSheet(false);
     onSaveDraft();
+  };
+
+  const handleGoSettings = () => {
+    navigate('/settings');
   };
 
   if (loading) {
@@ -202,9 +208,15 @@ export default function QuotePreview({ jobId, onSend, onSaveDraft, onBack }: Quo
             <AlertTriangle size={16} color="#92400E" className="shrink-0" />
             <div className="flex-1 min-w-0">
               <p className="text-[13px] font-medium text-[#92400E]">
-                Add your business name to send quotes
+                Add your business name before sending
               </p>
             </div>
+            <button
+              onClick={handleGoSettings}
+              className="text-[13px] font-medium text-[#92400E] underline underline-offset-2 cursor-pointer shrink-0"
+            >
+              Settings →
+            </button>
           </div>
         )}
 
@@ -213,12 +225,15 @@ export default function QuotePreview({ jobId, onSend, onSaveDraft, onBack }: Quo
           <QuotePreviewCard
             businessName={businessName || 'Your business'}
             customerName={customer.name || 'Customer'}
+            customerPhone={customer.phone}
             quoteNumber={quoteNumber}
             jobTitle={job.title}
             lineItems={items}
             paymentTerms={job.payment_terms}
             depositPct={depositPct}
             quoteValidDays={quoteValidDays}
+            scheduledStart={job.scheduled_start}
+            scheduledEnd={job.scheduled_end}
           />
         </div>
       </div>
@@ -285,6 +300,7 @@ export default function QuotePreview({ jobId, onSend, onSaveDraft, onBack }: Quo
             onClick={() => handleSend('sms')}
             fullWidth
           >
+            <Phone size={18} className="mr-2" />
             Send via SMS
           </Button>
           <button

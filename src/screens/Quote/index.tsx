@@ -104,19 +104,23 @@ export default function Quote() {
         .and(j => j.status === 'enquiry')
         .toArray();
 
+      const profile = await db.profiles.get(userId);
+      const defaultPaymentTerms = profile?.payment_terms || 'on_completion';
+
       if (existingJobs.length > 0) {
         setJobId(existingJobs[0].id);
       } else {
-        // Create new job
+        // Create new job with profile defaults
         const newJobId = crypto.randomUUID();
         const n = now();
+        const jobPaymentTerms = defaultPaymentTerms;
         await db.jobs.add({
           id: newJobId,
           user_id: userId,
           customer_id: data.id,
           title: '',
           status: 'enquiry',
-          payment_terms: 'on_completion',
+          payment_terms: jobPaymentTerms,
           is_multi_day: false,
           created_at: n,
           updated_at: n,
@@ -128,7 +132,7 @@ export default function Quote() {
           record_id: newJobId,
           payload: {
             id: newJobId, user_id: userId, customer_id: data.id,
-            title: '', status: 'enquiry', payment_terms: 'on_completion',
+            title: '', status: 'enquiry', payment_terms: jobPaymentTerms,
             is_multi_day: false, created_at: n, updated_at: n,
           },
           created_at: n,
@@ -153,18 +157,22 @@ export default function Quote() {
     if (!jobId || !userId) return;
     const n = now();
 
-    // Update job to quoted
+    const profile = await db.profiles.get(userId);
+    const validDays = profile?.quote_valid_days ?? 30;
+    const expiresAt = new Date(Date.now() + validDays * 86400000).toISOString();
+
     await db.jobs.update(jobId, {
       status: 'quoted',
       quote_sent_at: n,
+      quote_expires_at: expiresAt,
       quote_send_method: method,
       updated_at: n,
       _sync_status: 'pending',
     });
 
-    // Write work log
+    const workLogId = crypto.randomUUID();
     await db.work_log.add({
-      id: crypto.randomUUID(),
+      id: workLogId,
       job_id: jobId,
       type: 'status_change',
       description: `Quote sent via ${method === 'whatsapp' ? 'WhatsApp' : method === 'sms' ? 'SMS' : 'Copy'}`,
@@ -172,12 +180,11 @@ export default function Quote() {
       _sync_status: 'pending',
     });
 
-    // Sync queue entries
     await db.sync_queue.add({
       operation: 'update',
       table_name: 'jobs',
       record_id: jobId,
-      payload: { status: 'quoted', quote_sent_at: n, quote_send_method: method, updated_at: n },
+      payload: { status: 'quoted', quote_sent_at: n, quote_expires_at: expiresAt, quote_send_method: method, updated_at: n },
       created_at: n,
       retry_count: 0,
     });
@@ -185,8 +192,8 @@ export default function Quote() {
     await db.sync_queue.add({
       operation: 'insert',
       table_name: 'work_log',
-      record_id: crypto.randomUUID(),
-      payload: { id: crypto.randomUUID(), job_id: jobId, type: 'status_change', description: `Quote sent via ${method === 'whatsapp' ? 'WhatsApp' : method === 'sms' ? 'SMS' : 'Copy'}`, created_at: n },
+      record_id: workLogId,
+      payload: { id: workLogId, job_id: jobId, type: 'status_change', description: `Quote sent via ${method === 'whatsapp' ? 'WhatsApp' : method === 'sms' ? 'SMS' : 'Copy'}`, created_at: n },
       created_at: n,
       retry_count: 0,
     });
@@ -196,7 +203,6 @@ export default function Quote() {
   };
 
   const handlePreviewSaveDraft = () => {
-    // Job stays in 'enquiry' status — no changes needed
     navigate('/', { replace: true });
   };
 
@@ -209,6 +215,10 @@ export default function Quote() {
   };
 
   const handleSentHome = () => {
+    navigate('/', { replace: true });
+  };
+
+  const handleSaveDraft = () => {
     navigate('/', { replace: true });
   };
 
@@ -239,7 +249,7 @@ export default function Quote() {
           jobId={jobId}
           onPreview={handleBuilderPreview}
           onBack={() => setStep('customer_details')}
-          onCancel={handleCancel}
+          onSaveDraft={handleSaveDraft}
         />
       );
 

@@ -132,7 +132,7 @@ export default function JobDetail() {
 
   const hasContactButtons = useMemo(() => {
     if (!job) return false;
-    return ['booked', 'in_progress', 'awaiting_payment', 'no_show'].includes(job.status);
+    return ['booked', 'in_progress', 'awaiting_payment', 'no_show', 'quoted'].includes(job.status);
   }, [job]);
 
   const statusContext = useMemo(() => {
@@ -158,6 +158,10 @@ export default function JobDetail() {
     }
     if (job.status === 'cancelled' && job.updated_at) {
       return ` · ${formatShortDate(new Date(job.updated_at))}`;
+    }
+    if (job.status === 'quoted' && job.quote_sent_at) {
+      const days = Math.floor((Date.now() - new Date(job.quote_sent_at).getTime()) / (1000 * 60 * 60 * 24));
+      return ` · Sent ${days}d ago`;
     }
     if (job.status === 'written_off' && job.updated_at) {
       return ` · ${formatShortDate(new Date(job.updated_at))}`;
@@ -365,6 +369,26 @@ export default function JobDetail() {
   };
 
   
+
+  const handleMarkAsBooked = async () => {
+    if (!job) return;
+    const n = now();
+    await db.jobs.update(job.id, {
+      status: 'booked',
+      updated_at: n,
+      _sync_status: 'pending',
+    });
+    await db.work_log.add({
+      id: crypto.randomUUID(),
+      job_id: job.id,
+      type: 'status_change',
+      description: 'Quote accepted — marked as booked',
+      created_at: n,
+      _sync_status: 'pending',
+    });
+    await addToSyncQueue('jobs', job.id, { status: 'booked', updated_at: n });
+    refresh();
+  };
 
   const handleReschedule = async () => {
     if (!job || !rescheduleDate) return;
@@ -671,6 +695,72 @@ export default function JobDetail() {
     );
   };
 
+
+  const renderQuotedBody = () => {
+    if (!job || !customer) return null;
+    return (
+      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-2">
+        {renderStatusBadge()}
+
+        <div className="mb-4">
+          <div className="text-[10px] font-bold text-[#6B7280] uppercase tracking-[0.7px] mb-2.5">
+            Quote
+          </div>
+          <div className="border border-[#E5E7EB] rounded-xl overflow-hidden">
+            <div className="px-4 pt-3.5 pb-2.5 border-b border-[#F3F4F6]">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[12px] font-medium text-[#9CA3AF]">{job?.quote_number || 'Quote'}</span>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-[3px] rounded-md bg-[#EFF6FF] text-[#1D4ED8] text-[10px] font-bold uppercase tracking-[0.4px]">
+                  <span className="w-[5px] h-[5px] rounded-full bg-[#1D4ED8]" />
+                  Quoted
+                </span>
+              </div>
+              <div className="text-[18px] font-bold text-[#111827]">{job.title}</div>
+              <div className="text-[13px] text-[#6B7280] mt-0.5">{customer.name}</div>
+            </div>
+            <div className="border-b border-[#F3F4F6]">
+              <div className="flex justify-between items-center px-4 py-2.5 border-b border-[#F9FAFB]">
+                <span className="text-[13px] text-[#9CA3AF]">Date &amp; time</span>
+                <span className="text-[13px] font-medium text-[#111827] text-right">
+                  {formatDateTimeRange(job.scheduled_start, job.scheduled_end)}
+                </span>
+              </div>
+              <div className="flex justify-between items-center px-4 py-2.5 border-b border-[#F9FAFB]">
+                <span className="text-[13px] text-[#9CA3AF]">Payment</span>
+                <span className="text-[13px] font-medium text-[#111827] text-right">
+                  {paymentTermsLabel(job.payment_terms)}
+                </span>
+              </div>
+              <div className="flex justify-between items-center px-4 py-2.5">
+                <span className="text-[13px] text-[#9CA3AF]">Valid until</span>
+                <span className="text-[13px] font-medium text-[#111827] text-right">
+                  {job.quote_expires_at
+                    ? new Date(job.quote_expires_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                    : '—'}
+                </span>
+              </div>
+            </div>
+            <div className="px-4 pt-3 pb-0">
+              {lineItems.map((item, idx) => (
+                <div key={item.id} className={`flex justify-between py-1.5 text-[13px] text-[#374151] ${idx < lineItems.length - 1 ? 'border-b border-[#F9FAFB]' : ''}`}>
+                  <span>{item.description}</span>
+                  <span className="font-medium text-[#111827]">£{item.amount.toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-between items-center px-4 py-3 border-t-[1.5px] border-[#111827] mt-0">
+              <span className="text-[16px] font-bold text-[#111827]">Total</span>
+              <span className="text-[20px] font-extrabold text-[#111827]">£{total.toFixed(2)}</span>
+            </div>
+            <div className="px-4 py-3 border-t border-[#F3F4F6] text-[12px] text-[#9CA3AF] leading-relaxed">
+              {profile?.business_name || 'Your business'}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderBookedFooter = () => (
     <div className="sticky bottom-0 z-30 bg-white border-t border-[#F3F4F6] shadow-sheet">
       <div className="flex flex-col gap-2 px-4 py-3 pb-[calc(32px_+_env(safe-area-inset-bottom))]">
@@ -683,6 +773,16 @@ export default function JobDetail() {
         >
           Cancel job
         </button>
+      </div>
+    </div>
+  );
+
+  const renderQuotedFooter = () => (
+    <div className="sticky bottom-0 z-30 bg-white border-t border-[#F3F4F6] shadow-sheet">
+      <div className="flex flex-col gap-2 px-4 py-3 pb-[calc(32px_+_env(safe-area-inset-bottom))]">
+        <Button variant="primary" onClick={handleMarkAsBooked}>
+          Mark as Booked
+        </Button>
       </div>
     </div>
   );
@@ -1253,11 +1353,13 @@ export default function JobDetail() {
       {job.status === 'paid' && renderPaidBody()}
       {job.status === 'cancelled' && renderCancelledBody()}
       {job.status === 'written_off' && renderWrittenOffBody()}
+      {job.status === 'quoted' && renderQuotedBody()}
 
       {job.status === 'booked' && renderBookedFooter()}
       {job.status === 'in_progress' && renderInProgressFooter()}
       {job.status === 'awaiting_payment' && renderAwaitingPaymentFooter()}
       {job.status === 'no_show' && renderNoShowFooter()}
+      {job.status === 'quoted' && renderQuotedFooter()}
 
       {renderCancelSheet()}
       {renderAddChargeSheet()}

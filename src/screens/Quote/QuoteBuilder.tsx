@@ -54,12 +54,12 @@ interface QuoteBuilderProps {
   jobId?: string;
   onPreview: () => void;
   onBack: () => void;
-  onCancel: () => void;
+  onSaveDraft: () => void;
 }
 
 /* ─── component ─── */
 
-export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onCancel }: QuoteBuilderProps) {
+export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onSaveDraft }: QuoteBuilderProps) {
   const userId = useAppStore((s) => s.userId);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(true);
@@ -73,9 +73,9 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onC
   const [items, setItems] = useState<EditableItem[]>([]);
   const [paymentTerms, setPaymentTerms] = useState<'on_completion' | 'deposit' | 'invoice'>('on_completion');
   const [depositPct, setDepositPct] = useState<number>(20);
-  const [depositCustom, setDepositCustom] = useState('');
+  const [depositCustom, setDepositCustom] = useState<string | null>(null);
   const [titleFocused, setTitleFocused] = useState(false);
-  const [depositSectionRef] = useState<React.RefObject<HTMLDivElement>>(useRef<HTMLDivElement>(null));
+  const depositSectionRef = useRef<HTMLDivElement>(null);
 
   /* load customer and job */
   useEffect(() => {
@@ -93,7 +93,14 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onC
           setStartTime(formatTimeForInput(job.scheduled_start));
           setEndTime(formatTimeForInput(job.scheduled_end));
           setPaymentTerms(job.payment_terms || 'on_completion');
-          setDepositPct(job.deposit_pct || 20);
+          const presets = [10, 20, 25, 50];
+          if (job.deposit_pct && !presets.includes(job.deposit_pct)) {
+            setDepositPct(job.deposit_pct);
+            setDepositCustom(String(job.deposit_pct));
+          } else {
+            setDepositPct(job.deposit_pct || 20);
+            setDepositCustom(null);
+          }
 
           const dbItems = await db.line_items.where('job_id').equals(currentJobId).toArray();
           setItems(
@@ -106,7 +113,7 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onC
           );
         }
       } else {
-        // Create new job
+        // Create new job — should not happen in normal flow (parent creates it)
         const newJobId = crypto.randomUUID();
         const n = now();
         await db.jobs.add({
@@ -188,15 +195,22 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onC
     if (!currentJobId || !userId) return;
     const n = now();
 
-    // Delete existing items for this job and re-add
     const existing = await db.line_items.where('job_id').equals(currentJobId).toArray();
     for (const e of existing) {
       await db.line_items.delete(e.id);
+      await db.sync_queue.add({
+        operation: 'delete',
+        table_name: 'line_items',
+        record_id: e.id,
+        payload: {},
+        created_at: n,
+        retry_count: 0,
+      });
     }
 
     for (let idx = 0; idx < items.length; idx++) {
       const i = items[idx];
-      if (!i.description.trim()) continue;
+      if (!i.description.trim() && i.amountNum === 0) continue;
       await db.line_items.add({
         id: i.id,
         job_id: currentJobId,
@@ -235,37 +249,80 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onC
   const handleStartTimeBlur = () => saveJob();
   const handleEndTimeBlur = () => saveJob();
 
-  const handlePaymentTermsChange = (val: string) => {
+  const handlePaymentTermsChange = async (val: string) => {
     const terms = val as 'on_completion' | 'deposit' | 'invoice';
     setPaymentTerms(terms);
-    // Save immediately since it's a control change, not blur
-    if (currentJobId) {
-      db.jobs.update(currentJobId, {
+    if (currentJobId && userId) {
+      const n = now();
+      await db.jobs.update(currentJobId, {
         payment_terms: terms,
-        updated_at: now(),
+        updated_at: n,
         _sync_status: 'pending',
+      });
+      await db.sync_queue.add({
+        operation: 'update',
+        table_name: 'jobs',
+        record_id: currentJobId,
+        payload: {
+          payment_terms: terms,
+          updated_at: n,
+        },
+        created_at: n,
+        retry_count: 0,
       });
     }
   };
 
-  const handleDepositPctChange = (pct: number) => {
+  const handleDepositPctChange = async (pct: number) => {
     setDepositPct(pct);
-    setDepositCustom('');
-    if (currentJobId) {
-      db.jobs.update(currentJobId, {
+    setDepositCustom(null);
+    if (currentJobId && userId) {
+      const n = now();
+      await db.jobs.update(currentJobId, {
         deposit_pct: pct,
-        updated_at: now(),
+        updated_at: n,
         _sync_status: 'pending',
+      });
+      await db.sync_queue.add({
+        operation: 'update',
+        table_name: 'jobs',
+        record_id: currentJobId,
+        payload: {
+          deposit_pct: pct,
+          updated_at: n,
+        },
+        created_at: n,
+        retry_count: 0,
       });
     }
   };
 
-  const handleDepositCustomBlur = () => {
-    const val = parseFloat(depositCustom);
+  const handleDepositCustomBlur = async () => {
+    const val = depositCustom ? parseFloat(depositCustom) : NaN;
+    let finalPct = depositPct;
     if (!isNaN(val) && val > 0 && val <= 100) {
       setDepositPct(val);
+      finalPct = val;
     }
-    saveJob();
+    if (currentJobId && userId) {
+      const n = now();
+      await db.jobs.update(currentJobId, {
+        deposit_pct: finalPct,
+        updated_at: n,
+        _sync_status: 'pending',
+      });
+      await db.sync_queue.add({
+        operation: 'update',
+        table_name: 'jobs',
+        record_id: currentJobId,
+        payload: {
+          deposit_pct: finalPct,
+          updated_at: n,
+        },
+        created_at: n,
+        retry_count: 0,
+      });
+    }
   };
 
   const addItem = () => {
@@ -298,14 +355,20 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onC
     saveItems();
   }, [saveItems]);
 
+  const handlePreview = async () => {
+    await saveItems();
+    await saveJob();
+    onPreview();
+  };
+
   /* auto-scroll to deposit section on select */
   useEffect(() => {
     if (paymentTerms === 'deposit' && depositSectionRef.current) {
-      setTimeout(() => {
+      requestAnimationFrame(() => {
         depositSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      }, 100);
+      });
     }
-  }, [paymentTerms, depositSectionRef]);
+  }, [paymentTerms]);
 
   if (loading) {
     return (
@@ -330,10 +393,10 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onC
         </button>
         <span className="text-[16px] font-bold text-[#111827]">Quote details</span>
         <button
-          onClick={onCancel}
-          className="min-h-[44px] flex items-center text-[14px] text-[#9CA3AF] cursor-pointer"
+          onClick={onSaveDraft}
+          className="min-h-[44px] flex items-center text-[14px] text-[#6B7280] cursor-pointer underline underline-offset-2"
         >
-          Cancel
+          Save draft
         </button>
       </div>
 
@@ -372,7 +435,7 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onC
               onFocus={() => setTitleFocused(true)}
               onBlur={handleTitleBlur}
               placeholder="e.g. New boiler installation"
-              className={`w-full h-[48px] px-3.5 border-[1.5px] rounded-[10px] text-[16px] font-medium text-[#111827] placeholder:text-[#D1D5DB] placeholder:italic outline-none ${
+              className={`w-full min-h-[48px] px-3.5 border-[1.5px] rounded-[10px] text-[16px] font-medium text-[#111827] placeholder:text-[#D1D5DB] placeholder:italic outline-none ${
                 titleFocused ? 'border-[#111827]' : 'border-[#E5E7EB]'
               }`}
             />
@@ -387,7 +450,7 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onC
               value={date}
               onChange={(e) => setDate(e.target.value)}
               onBlur={handleDateBlur}
-              className="w-full h-[48px] px-3.5 border-[1.5px] border-[#E5E7EB] rounded-[10px] text-[16px] font-medium text-[#111827] outline-none focus:border-[#111827]"
+              className="w-full min-h-[48px] px-3.5 border-[1.5px] border-[#E5E7EB] rounded-[10px] text-[16px] font-medium text-[#111827] outline-none focus:border-[#111827]"
             />
           </div>
 
@@ -401,7 +464,7 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onC
                 value={startTime}
                 onChange={(e) => setStartTime(e.target.value)}
                 onBlur={handleStartTimeBlur}
-                className="w-full h-[48px] px-3.5 border-[1.5px] border-[#E5E7EB] rounded-[10px] text-[16px] font-medium text-[#111827] outline-none focus:border-[#111827]"
+                className="w-full min-h-[48px] px-3.5 border-[1.5px] border-[#E5E7EB] rounded-[10px] text-[16px] font-medium text-[#111827] outline-none focus:border-[#111827]"
               />
             </div>
             <div className="flex-1">
@@ -413,7 +476,7 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onC
                 value={endTime}
                 onChange={(e) => setEndTime(e.target.value)}
                 onBlur={handleEndTimeBlur}
-                className="w-full h-[48px] px-3.5 border-[1.5px] border-[#E5E7EB] rounded-[10px] text-[16px] font-medium text-[#111827] outline-none focus:border-[#111827]"
+                className="w-full min-h-[48px] px-3.5 border-[1.5px] border-[#E5E7EB] rounded-[10px] text-[16px] font-medium text-[#111827] outline-none focus:border-[#111827]"
               />
             </div>
           </div>
@@ -437,7 +500,7 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onC
                   onChange={(e) => updateItemDesc(item.id, e.target.value)}
                   onBlur={saveItemBlur}
                   placeholder="Item description"
-                  className="flex-1 h-[40px] px-2 border-[1.5px] border-[#E5E7EB] rounded-lg text-[16px] font-medium text-[#111827] placeholder:text-[#D1D5DB] placeholder:italic outline-none focus:border-[#111827]"
+                  className="flex-1 min-h-[48px] px-2 border-[1.5px] border-[#E5E7EB] rounded-lg text-[16px] font-medium text-[#111827] placeholder:text-[#D1D5DB] placeholder:italic outline-none focus:border-[#111827]"
                 />
                 <div className="flex items-center gap-1 shrink-0">
                   <span className="text-[14px] text-[#6B7280]">£</span>
@@ -448,8 +511,8 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onC
                     onChange={(e) => updateItemAmount(item.id, e.target.value)}
                     onBlur={saveItemBlur}
                     placeholder="0.00"
-                    className={`w-[80px] h-[40px] px-2 border-[1.5px] rounded-lg text-[16px] font-medium text-[#111827] text-right outline-none focus:border-[#111827] placeholder:text-[#D1D5DB] ${
-                      item.amountNum === 0 && item.amount !== '' ? 'border-[#EF4444]' : 'border-[#E5E7EB]'
+                    className={`w-[80px] min-h-[48px] px-2 border-[1.5px] rounded-lg text-[16px] font-medium text-[#111827] text-right outline-none focus:border-[#111827] placeholder:text-[#D1D5DB] ${
+                      (item.amount === '' || item.amountNum === 0) ? 'border-[#EF4444]' : 'border-[#E5E7EB]'
                     }`}
                   />
                 </div>
@@ -466,7 +529,7 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onC
 
           <button
             onClick={addItem}
-            className="inline-flex items-center gap-1 text-[13px] font-semibold text-[#111827] underline underline-offset-2 cursor-pointer"
+            className="inline-flex items-center gap-1 text-[13px] font-medium text-[#6B7280] underline underline-offset-2 cursor-pointer"
           >
             <Plus size={14} />
             Add item
@@ -498,18 +561,19 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onC
         {/* Deposit section */}
         {paymentTerms === 'deposit' && (
           <div ref={depositSectionRef} className="mb-5">
-            <div className="text-[10px] font-bold text-[#6B7280] uppercase tracking-[0.7px] mb-2.5">
-              Deposit %
-            </div>
-            <div className="flex gap-2 mb-3">
+            <div className="bg-[#F9FAFB] border border-[#E5E7EB] rounded-[10px] p-3.5">
+              <div className="text-[10px] font-bold text-[#6B7280] uppercase tracking-[0.7px] mb-2.5">
+                Deposit amount
+              </div>
+              <div className="flex gap-2 mb-3">
               {DEPOSIT_PRESETS.map((pct) => (
                 <button
                   key={pct}
                   onClick={() => handleDepositPctChange(pct)}
-                  className={`flex-1 h-[44px] rounded-lg text-[13px] font-semibold cursor-pointer border ${
-                    depositPct === pct && !depositCustom
-                      ? 'bg-[#111827] text-white border-[#111827]'
-                      : 'bg-white text-[#111827] border-[#D1D5DB]'
+                  className={`flex-1 h-[44px] rounded-lg text-[13px] font-semibold cursor-pointer border-[1.5px] ${
+                    depositPct === pct && depositCustom === null
+                      ? 'bg-white text-[#111827] border-[#111827]'
+                      : 'bg-white text-[#6B7280] border-[#E5E7EB]'
                   }`}
                 >
                   {pct}%
@@ -517,17 +581,17 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onC
               ))}
               <button
                 onClick={() => setDepositCustom('')}
-                className={`flex-1 h-[44px] rounded-lg text-[13px] font-semibold cursor-pointer border ${
-                  depositCustom
-                    ? 'bg-[#111827] text-white border-[#111827]'
-                    : 'bg-white text-[#111827] border-[#D1D5DB]'
+                className={`flex-1 h-[44px] rounded-lg text-[13px] font-semibold cursor-pointer border-[1.5px] ${
+                  depositCustom !== null
+                    ? 'bg-white text-[#111827] border-[#111827]'
+                    : 'bg-white text-[#6B7280] border-[#E5E7EB]'
                 }`}
               >
                 Custom
               </button>
             </div>
 
-            {depositCustom !== '' && (
+            {depositCustom !== null && (
               <div className="mb-3">
                 <input
                   type="text"
@@ -536,16 +600,14 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onC
                   onChange={(e) => setDepositCustom(e.target.value)}
                   onBlur={handleDepositCustomBlur}
                   placeholder="e.g. 15"
-                  className="w-full h-[48px] px-3.5 border-[1.5px] border-[#E5E7EB] rounded-[10px] text-[16px] font-medium text-[#111827] placeholder:text-[#D1D5DB] placeholder:italic outline-none focus:border-[#111827]"
+                  className="w-full min-h-[48px] px-3.5 border-[1.5px] border-[#E5E7EB] rounded-[10px] text-[16px] font-medium text-[#111827] placeholder:text-[#D1D5DB] placeholder:italic outline-none focus:border-[#111827]"
                 />
               </div>
             )}
 
-            <div className="bg-[#F9FAFB] border border-[#E5E7EB] rounded-[10px] p-3.5">
-              <div className="text-[13px] text-[#6B7280]">
+              <div className="text-[13px] text-[#6B7280] text-center leading-relaxed">
                 Deposit: <span className="font-bold text-[#111827]">£{formatAmountDisplay(depositAmount)}</span>
-              </div>
-              <div className="text-[13px] text-[#6B7280] mt-1">
+                <br />
                 Balance on completion: <span className="font-bold text-[#111827]">£{formatAmountDisplay(balance)}</span>
               </div>
             </div>
@@ -555,7 +617,7 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onC
 
       {/* Sticky Footer */}
       <StickyFooter>
-        <Button variant="primary" onClick={onPreview} disabled={!canPreview}>
+        <Button variant="primary" onClick={handlePreview} disabled={!canPreview}>
           Preview quote →
         </Button>
       </StickyFooter>
