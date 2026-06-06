@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { ChevronLeft, X, Plus } from 'lucide-react';
+import { ChevronLeft, X, Plus, Calendar, Clock } from 'lucide-react';
 import { db, type Customer } from '../../lib/db';
 import { useAppStore } from '../../store/useAppStore';
 import { SegmentedControl } from '../../components/SegmentedControl';
@@ -515,14 +515,17 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onS
             <label className="block text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-[0.3px] mb-1">
               Date <span className="normal-case font-normal tracking-0">(optional)</span>
             </label>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              onBlur={handleDateBlur}
-              className="w-full min-h-[48px] px-3.5 border-[1.5px] border-[#E5E7EB] rounded-[10px] text-[16px] font-medium text-[#111827] outline-none focus:border-[#111827] bg-white appearance-none"
-              style={{ colorScheme: 'light' }}
-            />
+            <div className="relative">
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                onBlur={handleDateBlur}
+                className="w-full min-h-[48px] px-3.5 pr-10 border-[1.5px] border-[#E5E7EB] rounded-[10px] text-[16px] font-medium text-[#111827] outline-none focus:border-[#111827] bg-white"
+                style={{ colorScheme: 'light', WebkitAppearance: 'none' }}
+              />
+              <Calendar size={18} color="#9CA3AF" className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
           </div>
 
           <div className="flex gap-2.5">
@@ -530,27 +533,33 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onS
               <label className="block text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-[0.3px] mb-1">
                 Start <span className="normal-case font-normal tracking-0">(optional)</span>
               </label>
-              <input
-                type="time"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                onBlur={handleStartTimeBlur}
-                className="w-full min-h-[48px] px-3.5 border-[1.5px] border-[#E5E7EB] rounded-[10px] text-[16px] font-medium text-[#111827] outline-none focus:border-[#111827] bg-white appearance-none"
-                style={{ colorScheme: 'light' }}
-              />
+              <div className="relative">
+                <input
+                  type="time"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  onBlur={handleStartTimeBlur}
+                  className="w-full min-h-[48px] px-3.5 pr-10 border-[1.5px] border-[#E5E7EB] rounded-[10px] text-[16px] font-medium text-[#111827] outline-none focus:border-[#111827] bg-white"
+                  style={{ colorScheme: 'light', WebkitAppearance: 'none' }}
+                />
+                <Clock size={18} color="#9CA3AF" className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
             </div>
             <div className="flex-1">
               <label className="block text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-[0.3px] mb-1">
                 End <span className="normal-case font-normal tracking-0">(optional)</span>
               </label>
-              <input
-                type="time"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-                onBlur={handleEndTimeBlur}
-                className="w-full min-h-[48px] px-3.5 border-[1.5px] border-[#E5E7EB] rounded-[10px] text-[16px] font-medium text-[#111827] outline-none focus:border-[#111827] bg-white appearance-none"
-                style={{ colorScheme: 'light' }}
-              />
+              <div className="relative">
+                <input
+                  type="time"
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                  onBlur={handleEndTimeBlur}
+                  className="w-full min-h-[48px] px-3.5 pr-10 border-[1.5px] border-[#E5E7EB] rounded-[10px] text-[16px] font-medium text-[#111827] outline-none focus:border-[#111827] bg-white"
+                  style={{ colorScheme: 'light', WebkitAppearance: 'none' }}
+                />
+                <Clock size={18} color="#9CA3AF" className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
             </div>
           </div>
         </div>
