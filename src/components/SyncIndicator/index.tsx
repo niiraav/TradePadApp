@@ -10,12 +10,21 @@ export default function SyncIndicator() {
   const [hasError, setHasError] = useState(false);
   const [visible, setVisible] = useState(false);
   const [hasSession, setHasSession] = useState(false);
+  const [isMockUser, setIsMockUser] = useState(false);
 
   useEffect(() => {
     let mounted = true;
 
     async function checkStatus() {
       if (!mounted) return;
+
+      // Never show sync indicator for mock users
+      const mockUser = localStorage.getItem('tradepad_mock_user');
+      setIsMockUser(!!mockUser);
+      if (mockUser) {
+        setHasSession(false);
+        return;
+      }
 
       // Check if there's a Supabase session (don't show for mock users)
       const { supabase } = await import('../../lib/supabase');
@@ -63,8 +72,8 @@ export default function SyncIndicator() {
     }
   }, [syncStatus]);
 
-  // Don't show anything for mock users (no Supabase session)
-  if (!hasSession) return null;
+  // Don't show anything for mock users or users without a session
+  if (isMockUser || !hasSession) return null;
 
   // Offline with pending sync_queue items
   if (!isOnline && hasPending) {

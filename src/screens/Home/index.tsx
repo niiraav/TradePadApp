@@ -157,7 +157,7 @@ export default function Home() {
 
   /* tick for elapsed timer */
   useEffect(() => {
-    timerRef.current = setInterval(() => setTick((t) => t + 1), 60000);
+    timerRef.current = setInterval(() => setTick((t) => t + 1), 15000);
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
@@ -630,7 +630,7 @@ export default function Home() {
 
   const renderNoJobsToday = () => (
     <div className="px-4 mt-6">
-      <div className="bg-brand-surface border border-brand-border rounded-lg p-9 text-center">
+      <div className="border border-dashed border-gray-300 rounded-lg p-8 text-center">
         <p className="text-title font-bold text-brand-black">No jobs today</p>
         <p className="text-xs text-brand-muted mt-1.5">
           {formatShortDate(today)} · Free day
