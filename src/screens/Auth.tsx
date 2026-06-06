@@ -178,7 +178,7 @@ export default function Auth() {
               placeholder="7XXX XXXXXX"
               value={phone}
               onChange={handlePhoneChange}
-              className="flex-1 text-[15px] text-[#111827] outline-none min-h-[48px] bg-transparent"
+              className="flex-1 text-base text-[#111827] outline-none min-h-[48px] bg-transparent"
               autoFocus
             />
           </div>
