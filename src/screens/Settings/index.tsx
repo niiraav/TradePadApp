@@ -23,6 +23,17 @@ const PAYMENT_OPTIONS = [
   { value: 'invoice', label: 'Invoice' },
 ];
 
+function validateUKPhone(value: string): string | null {
+  // Normalize: remove spaces, dashes, and leading +
+  const cleaned = value.replace(/[\s-]/g, '').replace(/^\+/, '');
+  // UK mobile: 44 7... or 07... (11 digits total after normalization)
+  const ukMobile = /^44?7\d{9}$/;
+  if (!ukMobile.test(cleaned)) {
+    return 'Enter a valid UK mobile number';
+  }
+  return null;
+}
+
 function now() {
   return new Date().toISOString();
 }
@@ -92,7 +103,7 @@ export default function Settings() {
 
   if (loading) {
     return (
-      <div className="flex flex-col h-full bg-[#F9FAFB]">
+      <div className="flex flex-col min-h-[100svh] bg-[#F9FAFB]">
         <div className="flex-1 flex items-center justify-center">
           <div className="text-[14px] text-[#9CA3AF]">Loading…</div>
         </div>
@@ -111,7 +122,7 @@ export default function Settings() {
       </div>
 
       {/* Scrollable body */}
-      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-4 min-h-0">
+      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-[calc(16px+56px+env(safe-area-inset-bottom))] min-h-0">
         {/* Nudge banner */}
         {showNudge && (
           <div className="bg-[#FEF2F2] border border-[#FECACA] rounded-[10px] p-3 mb-4 flex items-start gap-2.5">
@@ -200,6 +211,7 @@ export default function Settings() {
                 inputType="tel"
                 inputMode="tel"
                 placeholder="Phone number"
+                validate={validateUKPhone}
               />
             </div>
             <div

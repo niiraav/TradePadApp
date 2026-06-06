@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  ChevronLeft, Phone, MessageCircle, MessageSquare, Clock, Banknote, Pencil, Building2,
+  ChevronLeft, Phone, MessageCircle, MessageSquare, Clock, Banknote, Pencil, Building2, Check,
 } from 'lucide-react';
 import { db, type Job, type Customer, type LineItem, type WorkLogEntry, type Profile, type Payment } from '../../lib/db';
 import { useAppStore } from '../../store/useAppStore';
@@ -661,6 +661,16 @@ export default function JobDetail() {
 
   /* ─── render helpers ─── */
 
+  const renderTerminalFooter = () => (
+    <div className="sticky bottom-0 z-30 bg-white border-t border-[#F3F4F6] shadow-sheet">
+      <div className="flex flex-col gap-2 px-4 py-3 pb-[calc(32px_+_env(safe-area-inset-bottom))]">
+        <Button variant="primary" onClick={() => navigate('/', { replace: true })}>
+          Go Home
+        </Button>
+      </div>
+    </div>
+  );
+
   const renderHeader = () => (
     <div className="px-4 pt-2 pb-3 border-b border-[#F3F4F6] shrink-0">
       <button
@@ -697,6 +707,15 @@ export default function JobDetail() {
     </div>
   );
 
+
+  const confirmedAt = useMemo(() => {
+    if (!workLog.length) return null;
+    const entry = workLog.find(
+      (log) => log.type === 'status_change' && log.description.includes('Quote accepted')
+    );
+    return entry ? entry.created_at : null;
+  }, [workLog]);
+
   const renderStatusBadge = () => {
     if (!job) return null;
     return (
@@ -714,6 +733,14 @@ export default function JobDetail() {
     return (
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-2">
         {renderStatusBadge()}
+        {job.status === 'booked' && confirmedAt && (
+          <div className="flex items-center gap-1.5 -mt-3 mb-4">
+            <Check className="w-3.5 h-3.5 text-[#16A34A]" />
+            <span className="text-[11px] font-semibold text-[#16A34A]">
+              Confirmed by customer · {formatShortDate(new Date(confirmedAt))}
+            </span>
+          </div>
+        )}
 
         {customer.address && (
           <div className="mb-4">
@@ -1628,6 +1655,9 @@ export default function JobDetail() {
       {job.status === 'awaiting_payment' && renderAwaitingPaymentFooter()}
       {job.status === 'no_show' && renderNoShowFooter()}
       {job.status === 'quoted' && renderQuotedFooter()}
+      {job.status === 'paid' && renderTerminalFooter()}
+      {job.status === 'cancelled' && renderTerminalFooter()}
+      {job.status === 'written_off' && renderTerminalFooter()}
 
       {renderCancelSheet()}
       {renderAddChargeSheet()}

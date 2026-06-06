@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { Pencil } from 'lucide-react';
 
 export interface InlineEditRowProps {
+  validate?: (value: string) => string | null;
   label: string;
   value: string;
   onSave: (newValue: string) => void;
@@ -23,8 +24,10 @@ export const InlineEditRow: React.FC<InlineEditRowProps> = ({
   isEditing: controlledIsEditing,
   onEditStart,
   onEditEnd,
+  validate,
 }) => {
   const [internalEditing, setInternalEditing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState(value);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -41,6 +44,14 @@ export const InlineEditRow: React.FC<InlineEditRowProps> = ({
   }, [value]);
 
   const handleBlur = () => {
+    if (validate) {
+      const err = validate(inputValue);
+      if (err) {
+        setError(err);
+        return;
+      }
+    }
+    setError(null);
     onSave(inputValue);
     if (controlledIsEditing === undefined) {
       setInternalEditing(false);
@@ -49,6 +60,14 @@ export const InlineEditRow: React.FC<InlineEditRowProps> = ({
   };
 
   const handleDone = () => {
+    if (validate) {
+      const err = validate(inputValue);
+      if (err) {
+        setError(err);
+        return;
+      }
+    }
+    setError(null);
     onSave(inputValue);
     if (controlledIsEditing === undefined) {
       setInternalEditing(false);
@@ -80,14 +99,15 @@ export const InlineEditRow: React.FC<InlineEditRowProps> = ({
               onChange={(e) => setInputValue(e.target.value)}
               onBlur={handleBlur}
               placeholder={placeholder}
-              className="text-base text-[#111827] text-right min-w-[120px] bg-transparent border-none outline-none p-0"
+              className={`text-base text-right min-w-[120px] bg-transparent border-none outline-none p-0 ${error ? 'text-[#DC2626]' : 'text-[#111827]'}`}
             />
             <button
               onClick={handleDone}
-              className="text-[13px] font-semibold text-[#111827] underline underline-offset-2"
+              className={`text-[13px] font-semibold underline underline-offset-2 ${error ? 'text-[#DC2626]' : 'text-[#111827]'}`}
             >
-              Done
+              {error ? 'Invalid' : 'Done'}
             </button>
+            {error && <span className="text-[11px] text-[#DC2626] ml-1">{error}</span>}
           </>
         ) : (
           <>

@@ -14,8 +14,8 @@ export const TabBar: React.FC<TabBarProps> = ({ activeTab, onNavigate }) => {
   ];
 
   return (
-    <div className="h-[56px] bg-white border-t border-[#E5E7EB] flex pb-[env(safe-area-inset-bottom)]">
-      <div className="h-[56px] flex w-full">
+    <div className="shrink-0 bg-white border-t border-[#E5E7EB] pb-[env(safe-area-inset-bottom)]">
+      <div className="h-[56px] flex w-full flex-shrink-0">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.key;

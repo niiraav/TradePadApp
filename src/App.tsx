@@ -23,11 +23,17 @@ import Quote from './screens/Quote';
 import Settings from './screens/Settings';
 import Activity from './screens/Activity';
 
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error('Timeout')), ms)),
+  ]);
+}
+
 function AuthGuard() {
   const navigate = useNavigate();
   const setUserId = useAppStore((s) => s.setUserId);
   const setOnline = useAppStore((s) => s.setOnline);
-  const setSyncStatus = useAppStore((s) => s.setSyncStatus);
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
@@ -37,7 +43,7 @@ function AuthGuard() {
     async function checkSession() {
       let session = null;
       try {
-        const { data } = await supabase.auth.getSession();
+        const { data } = await withTimeout(supabase.auth.getSession(), 5000);
         session = data?.session ?? null;
       } catch {
         session = null;
@@ -80,14 +86,12 @@ function AuthGuard() {
       // Run initial sync (pull from Supabase) if online
       if (navigator.onLine) {
         try {
-          setSyncStatus('syncing');
-          await initialSync(session.user.id);
-          setSyncStatus('synced');
+          await withTimeout(initialSync(session.user.id), 15000);
         } catch {
-          setSyncStatus('error');
+          // silently fail initial sync — data will be local
         }
         // Run sync worker to push any pending local changes
-        await syncWorker();
+        await syncWorker().catch(() => {});
       }
 
       setChecking(false);
@@ -98,12 +102,7 @@ function AuthGuard() {
     // Online/offline listeners
     const handleOnline = () => {
       setOnline(true);
-      setSyncStatus('syncing');
-      syncWorker().then(() => {
-        setSyncStatus('synced');
-      }).catch(() => {
-        setSyncStatus('error');
-      });
+      syncWorker().catch(() => {});
     };
 
     const handleOffline = () => {
@@ -152,7 +151,7 @@ function AuthGuard() {
       window.removeEventListener('focus', handleFocus);
       if (syncInterval) clearInterval(syncInterval);
     };
-  }, [navigate, setUserId, setOnline, setSyncStatus]);
+  }, [navigate, setUserId, setOnline]);
 
   if (checking) {
     return (

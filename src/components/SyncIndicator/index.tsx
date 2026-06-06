@@ -7,32 +7,37 @@ export default function SyncIndicator() {
   const isOnline = useAppStore((s) => s.isOnline);
   const syncStatus = useAppStore((s) => s.syncStatus);
   const [hasPending, setHasPending] = useState(false);
+  const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
     let mounted = true;
 
-    async function checkPending() {
+    async function checkStatus() {
       if (!mounted) return;
+
+      // Check for pending records
       const tables = [db.jobs, db.customers, db.line_items, db.work_log, db.payments, db.profiles];
       let pendingFound = false;
+      let errorFound = false;
       for (const table of tables) {
-        const count = await table.where('_sync_status').equals('pending').count();
-        if (count > 0) {
-          pendingFound = true;
-          break;
-        }
+        const pendingCount = await table.where('_sync_status').equals('pending').count();
+        if (pendingCount > 0) pendingFound = true;
+        const errorCount = await table.where('_sync_status').equals('error').count();
+        if (errorCount > 0) errorFound = true;
       }
       setHasPending(pendingFound);
+      setHasError(errorFound);
     }
 
-    checkPending();
-    const interval = setInterval(checkPending, 5000);
+    checkStatus();
+    const interval = setInterval(checkStatus, 5000);
     return () => {
       mounted = false;
       clearInterval(interval);
     };
   }, []);
 
+  // Offline with pending changes
   if (!isOnline && hasPending) {
     return (
       <span className="text-[10px] font-medium text-[#9CA3AF]">
@@ -41,7 +46,17 @@ export default function SyncIndicator() {
     );
   }
 
-  if (syncStatus === 'error') {
+  // Actively syncing
+  if (syncStatus === 'syncing') {
+    return (
+      <span className="text-[10px] font-medium text-[#9CA3AF]">
+        Syncing…
+      </span>
+    );
+  }
+
+  // Sync error (failed after retries) — allow retry
+  if (syncStatus === 'error' && hasError) {
     return (
       <button
         onClick={() => syncWorker()}
@@ -52,10 +67,11 @@ export default function SyncIndicator() {
     );
   }
 
+  // Pending records but sync idle (will run on next interval)
   if (hasPending) {
     return (
       <span className="text-[10px] font-medium text-[#9CA3AF]">
-        Syncing…
+        Will sync
       </span>
     );
   }

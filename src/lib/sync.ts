@@ -1,32 +1,80 @@
 import { supabase } from './supabase';
 import { db } from './db';
 import type { SyncQueueItem } from './db';
+import { useAppStore } from '../store/useAppStore';
 
 const MAX_RETRIES = 5;
+const SYNC_TIMEOUT_MS = 8000;
+let syncRunning = false;
+
+function setSyncStatus(status: 'syncing' | 'synced' | 'error') {
+  try {
+    useAppStore.getState().setSyncStatus(status);
+  } catch {
+    // Store may not be initialized in some contexts
+  }
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error('Sync timeout')), ms)
+    ),
+  ]);
+}
 
 export async function syncWorker() {
-  if (!navigator.onLine) return;
+  if (syncRunning) return;
+  syncRunning = true;
 
-  const pending = await db.sync_queue.orderBy('created_at').toArray();
+  try {
+    await _syncWorkerCore();
+  } finally {
+    syncRunning = false;
+  }
+}
 
-  for (const item of pending) {
-    // Skip items that have been retried too many times
-    if (item.retry_count >= MAX_RETRIES) {
-      await updateSyncStatus(item.table_name, item.record_id, 'error');
-      continue;
+async function _syncWorkerCore() {
+  if (!navigator.onLine) {
+    setSyncStatus('synced');
+    return;
+  }
+
+  setSyncStatus('syncing');
+
+  try {
+    const pending = await db.sync_queue.orderBy('created_at').toArray();
+    if (pending.length === 0) {
+      setSyncStatus('synced');
+      return;
     }
 
-    try {
-      await pushToSupabase(item);
-      await db.sync_queue.delete(item.id as number);
-      await updateSyncStatus(item.table_name, item.record_id, 'synced');
-    } catch (err) {
-      // Mark error status and increment retry
-      await updateSyncStatus(item.table_name, item.record_id, 'error');
-      await db.sync_queue.update(item.id as number, {
-        retry_count: item.retry_count + 1,
-      });
+    let anyError = false;
+
+    for (const item of pending) {
+      // Delete exhausted entries — they already have _sync_status: 'error' on the record
+      if (item.retry_count >= MAX_RETRIES) {
+        await db.sync_queue.delete(item.id as number);
+        continue;
+      }
+
+      try {
+        await withTimeout(pushToSupabase(item), SYNC_TIMEOUT_MS);
+        await db.sync_queue.delete(item.id as number);
+        await updateSyncStatus(item.table_name, item.record_id, 'synced');
+      } catch (err) {
+        anyError = true;
+        await updateSyncStatus(item.table_name, item.record_id, 'error');
+        await db.sync_queue.update(item.id as number, {
+          retry_count: item.retry_count + 1,
+        });
+      }
     }
+
+    setSyncStatus(anyError ? 'error' : 'synced');
+  } catch (err) {
+    setSyncStatus('error');
   }
 }
 
@@ -75,12 +123,15 @@ async function updateSyncStatus(
   }
 }
 
-// Check if any records have pending or error sync status
+// Check if any records have pending sync status
 export async function hasPendingSync(): Promise<boolean> {
-  const pendingQueue = await db.sync_queue.count();
+  const pendingQueue = await db.sync_queue
+    .where('retry_count')
+    .below(MAX_RETRIES)
+    .count();
   if (pendingQueue > 0) return true;
 
-  // Also check Dexie records with error status (failed items that are no longer in queue)
+  // Also check Dexie records with pending status
   const tables = [db.jobs, db.customers, db.line_items, db.work_log, db.payments, db.profiles];
   for (const table of tables) {
     const count = await table.where('_sync_status').equals('pending').count();

@@ -9,6 +9,13 @@ import { StickyFooter } from '../../components/StickyFooter';
 import { Button } from '../../components/Button';
 import { Check, Wrench, Zap, HardHat, Hammer, HelpCircle } from 'lucide-react';
 
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error('Timeout')), ms)),
+  ]);
+}
+
 type TradeType = 'plumber' | 'electrician' | 'builder' | 'other';
 type PaymentTerms = 'on_completion' | 'deposit' | 'invoice';
 type Step = 1 | 2 | 3 | 4;
@@ -50,7 +57,7 @@ export default function Onboarding() {
   useEffect(() => {
     async function fetchUser() {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { user } } = await withTimeout(supabase.auth.getUser(), 5000);
         if (user) {
           setLocalUserId(user.id);
           const phoneFromAuth = user.phone || user.user_metadata?.phone || '';
