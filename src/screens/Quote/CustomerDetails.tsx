@@ -18,6 +18,33 @@ function normalisePhone(phone: string): string {
   return cleaned;
 }
 
+function formatUkPhoneInput(raw: string): string {
+  // Strip everything except digits and +
+  let digits = raw.replace(/[^\d+]/g, '');
+
+  // If user typed +44, extract digits after it
+  if (digits.startsWith('+44')) {
+    digits = '0' + digits.slice(3);
+  }
+
+  // Remove any leading + if present without 44
+  digits = digits.replace(/^\+/, '');
+
+  // Ensure it starts with 0 for UK mobile
+  if (!digits.startsWith('0') && digits.length > 0) {
+    digits = '0' + digits;
+  }
+
+  // Cap at 11 digits (UK mobile: 07 + 9 digits)
+  digits = digits.slice(0, 11);
+
+  // Format: 0 7 00 00 00 000 -> 07700 000 000
+  if (digits.length <= 1) return digits;
+  if (digits.length <= 5) return digits;
+  if (digits.length <= 8) return digits.slice(0, 5) + ' ' + digits.slice(5);
+  return digits.slice(0, 5) + ' ' + digits.slice(5, 8) + ' ' + digits.slice(8);
+}
+
 interface CustomerDetailsProps {
   customerId?: string;
   onComplete: (customer: { id: string; name: string; phone: string; address?: string }) => void;
@@ -150,9 +177,9 @@ export default function CustomerDetails({ customerId, onComplete, onCancel }: Cu
             <input
               ref={phoneRef}
               type="tel"
-              inputMode="tel"
+              inputMode="numeric"
               value={phone}
-              onChange={(e) => { setPhone(e.target.value); setPhoneError(false); }}
+              onChange={(e) => { setPhone(formatUkPhoneInput(e.target.value)); setPhoneError(false); }}
               onFocus={() => setPhoneFocused(true)}
               onBlur={() => setPhoneFocused(false)}
               placeholder="e.g. 07700 900123"
