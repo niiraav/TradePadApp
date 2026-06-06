@@ -65,7 +65,9 @@ type SheetState =
   | 'send_reminder'
   | 'reschedule'
   | 'callout_charge'
-  | 'booking_confirmation';
+  | 'booking_confirmation'
+  | 'edit_details'
+  | 'send_update';
 
 /* ─── component ─── */
 
@@ -100,6 +102,11 @@ export default function JobDetail() {
   const [calloutDesc, setCalloutDesc] = useState('Callout charge');
   const [calloutAmount, setCalloutAmount] = useState('');
   const [workLogExpanded, setWorkLogExpanded] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editStart, setEditStart] = useState('');
+  const [editEnd, setEditEnd] = useState('');
+  const [editNotes, setEditNotes] = useState('');
+  const [updateMessage, setUpdateMessage] = useState('');
   const [bookingMessage, setBookingMessage] = useState('');
 
   /* ─── load data ─── */
@@ -431,6 +438,87 @@ export default function JobDetail() {
     refresh();
   };
 
+  const handleEditDetails = async () => {
+    if (!job) return;
+    const n = now();
+    const changes: string[] = [];
+    if (editTitle.trim() && editTitle.trim() !== job.title) changes.push('title');
+    if (editStart !== (job.scheduled_start || '')) changes.push('date/time');
+    if (editNotes.trim() !== (job.notes || '')) changes.push('notes');
+
+    await db.jobs.update(job.id, {
+      title: editTitle.trim() || job.title,
+      scheduled_start: editStart || undefined,
+      scheduled_end: editEnd || undefined,
+      notes: editNotes.trim() || undefined,
+      updated_at: n,
+      _sync_status: 'pending',
+    });
+    await addToSyncQueue('jobs', job.id, {
+      title: editTitle.trim() || job.title,
+      scheduled_start: editStart || undefined,
+      scheduled_end: editEnd || undefined,
+      notes: editNotes.trim() || undefined,
+      updated_at: n,
+    });
+
+    if (changes.length > 0) {
+      await db.work_log.add({
+        id: crypto.randomUUID(),
+        job_id: job.id,
+        type: 'status_change',
+        description: `Job details updated (${changes.join(', ')})`,
+        created_at: n,
+        _sync_status: 'pending',
+      });
+      // Generate update message for customer
+      const customerFirstName = customer?.name.split(' ')[0] || 'there';
+      const business = profile?.business_name || 'Your tradesperson';
+      const changeText = changes.includes('date/time') && editStart
+        ? `Your job is now scheduled for ${formatShortDate(new Date(editStart))} · ${formatTime(new Date(editStart))}.`
+        : 'There are some updates to your job details.';
+      const msg = `Hi ${customerFirstName}, ${changeText} ${job.title}. — ${business}`;
+      setUpdateMessage(msg);
+      setSheet('send_update');
+    } else {
+      setSheet(null);
+    }
+    refresh();
+  };
+
+  const handleSendUpdate = async (method: 'whatsapp' | 'sms') => {
+    if (!customer || !updateMessage) return;
+    const phone = customer.phone.replace(/\D/g, '');
+    const encoded = encodeURIComponent(updateMessage);
+
+    if (method === 'whatsapp') {
+      window.open(`https://wa.me/${phone}?text=${encoded}`, '_blank');
+    } else if (method === 'sms') {
+      window.open(`sms:${customer.phone}?body=${encoded}`, '_self');
+    }
+
+    const n = now();
+    const logId = crypto.randomUUID();
+    await db.work_log.add({
+      id: logId,
+      job_id: jobId!,
+      type: 'customer_notified',
+      description: 'Update sent to customer via ' + (method === 'whatsapp' ? 'WhatsApp' : 'SMS'),
+      created_at: n,
+      _sync_status: 'pending',
+    });
+    await addToSyncQueue('work_log', logId, {
+      id: logId,
+      job_id: jobId!,
+      type: 'customer_notified',
+      description: 'Update sent to customer via ' + (method === 'whatsapp' ? 'WhatsApp' : 'SMS'),
+      created_at: n,
+    });
+
+    setSheet(null);
+    setUpdateMessage('');
+  };
+
   const handleSendBookingConfirmation = async (method: 'whatsapp' | 'sms') => {
     if (!customer || !bookingMessage) return;
     const phone = customer.phone.replace(/\D/g, '');
@@ -666,8 +754,7 @@ export default function JobDetail() {
             <InvoiceItemRow
               key={item.id}
               item={item}
-              showRemove={true}
-              onRemove={() => handleRemoveItem(item.id)}
+              showRemove={false}
             />
           ))}
           <InvoiceTotalRow total={total} />
@@ -816,7 +903,15 @@ export default function JobDetail() {
         <Button variant="primary" onClick={() => navigate('/', { replace: true })}>
           Go Home
         </Button>
-        <Button variant="secondary" onClick={() => { /* Edit details — placeholder for later milestone */ }}>
+        <Button variant="secondary" onClick={() => {
+          if (job) {
+            setEditTitle(job.title);
+            setEditStart(job.scheduled_start || '');
+            setEditEnd(job.scheduled_end || '');
+            setEditNotes(job.notes || '');
+            setSheet('edit_details');
+          }
+        }}>
           Edit details
         </Button>
         <button
@@ -1403,6 +1498,96 @@ export default function JobDetail() {
     </BottomSheet>
   );
 
+  const renderEditDetailsSheet = () => (
+    <BottomSheet
+      isOpen={sheet === 'edit_details'}
+      onClose={() => { setSheet(null); setUpdateMessage(''); }}
+      title="Edit job details"
+      subtitle={customer ? `${customer.name} · ${job?.title}` : undefined}
+    >
+      <div className="mb-3">
+        <label className="block text-[10px] font-bold uppercase tracking-[0.4px] text-[#9CA3AF] mb-1">
+          Job title
+        </label>
+        <input
+          type="text"
+          value={editTitle}
+          onChange={(e) => setEditTitle(e.target.value)}
+          className="w-full h-[48px] px-3.5 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] font-medium text-[#111827] outline-none focus:border-[#111827]"
+        />
+      </div>
+      <div className="mb-3">
+        <label className="block text-[10px] font-bold uppercase tracking-[0.4px] text-[#9CA3AF] mb-1">
+          Date &amp; time
+        </label>
+        <input
+          type="datetime-local"
+          value={editStart}
+          onChange={(e) => setEditStart(e.target.value)}
+          className="w-full h-[48px] px-3.5 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] font-medium text-[#111827] outline-none focus:border-[#111827]"
+        />
+      </div>
+      {editStart && (
+        <div className="mb-3">
+          <label className="block text-[10px] font-bold uppercase tracking-[0.4px] text-[#9CA3AF] mb-1">
+            End time (optional)
+          </label>
+          <input
+            type="datetime-local"
+            value={editEnd}
+            onChange={(e) => setEditEnd(e.target.value)}
+            className="w-full h-[48px] px-3.5 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] font-medium text-[#111827] outline-none focus:border-[#111827]"
+          />
+        </div>
+      )}
+      <div className="mb-4">
+        <label className="block text-[10px] font-bold uppercase tracking-[0.4px] text-[#9CA3AF] mb-1">
+          Notes (private)
+        </label>
+        <textarea
+          value={editNotes}
+          onChange={(e) => setEditNotes(e.target.value)}
+          placeholder="Any notes about this job..."
+          rows={3}
+          className="w-full px-3.5 py-3 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] font-medium text-[#111827] placeholder:text-[#D1D5DB] outline-none focus:border-[#111827] resize-none"
+        />
+      </div>
+      <Button variant="primary" onClick={handleEditDetails}>
+        Save changes
+      </Button>
+    </BottomSheet>
+  );
+
+  const renderSendUpdateSheet = () => (
+    <BottomSheet
+      isOpen={sheet === 'send_update'}
+      onClose={() => { setSheet(null); setUpdateMessage(''); }}
+      title="Send update to customer?"
+    >
+      <div className="mb-4">
+        <div className="bg-[#F9FAFB] border border-[#E5E7EB] rounded-[10px] p-3.5">
+          <p className="text-[13px] text-[#374151] leading-relaxed whitespace-pre-line">{updateMessage}</p>
+        </div>
+      </div>
+      <div className="flex flex-col gap-2">
+        <Button variant="primary" onClick={() => handleSendUpdate('whatsapp')} fullWidth>
+          <MessageCircle size={18} className="mr-2" />
+          Send via WhatsApp
+        </Button>
+        <Button variant="secondary" onClick={() => handleSendUpdate('sms')} fullWidth>
+          <Phone size={18} className="mr-2" />
+          Send via SMS
+        </Button>
+        <button
+          onClick={() => setSheet(null)}
+          className="w-full h-[46px] flex items-center justify-center text-[14px] font-medium text-[#9CA3AF] cursor-pointer"
+        >
+          Skip — already told them
+        </button>
+      </div>
+    </BottomSheet>
+  );
+
   /* ─── main render ─── */
 
   if (loading) {
@@ -1453,6 +1638,8 @@ export default function JobDetail() {
       {renderRescheduleSheet()}
       {renderCalloutChargeSheet()}
       {renderBookingConfirmationSheet()}
+      {renderEditDetailsSheet()}
+      {renderSendUpdateSheet()}
     </div>
   );
 }
