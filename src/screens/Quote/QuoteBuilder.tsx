@@ -467,12 +467,7 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onS
           Back
         </button>
         <span className="text-[16px] font-bold text-[#111827]">Quote details</span>
-        <button
-          onClick={onSaveDraft}
-          className="min-h-[44px] flex items-center text-[14px] text-[#6B7280] cursor-pointer underline underline-offset-2"
-        >
-          Save draft
-        </button>
+        <div className="min-h-[44px] w-[44px]" aria-hidden="true" />
       </div>
 
       {/* Body */}
@@ -698,6 +693,12 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onS
         <Button variant="primary" onClick={handlePreview} disabled={!canPreview}>
           Preview quote →
         </Button>
+        <button
+          onClick={onSaveDraft}
+          className="w-full h-[46px] flex items-center justify-center text-[14px] font-medium text-[#9CA3AF] cursor-pointer underline underline-offset-2"
+        >
+          Save draft
+        </button>
       </StickyFooter>
     </div>
   );
