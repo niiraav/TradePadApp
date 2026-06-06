@@ -145,6 +145,36 @@ export default function Auth() {
     }
   }, [step]);
 
+  const isMockMode = new URLSearchParams(window.location.search).has('mock');
+
+  const handleMockSignIn = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      // Create a mock user ID based on phone number
+      const mockUserId = 'mock_' + normalizedPhone.replace(/\D/g, '');
+      
+      // Store mock session in localStorage for auth guard to pick up
+      localStorage.setItem('tradepad_mock_user', JSON.stringify({
+        id: mockUserId,
+        phone: normalizedPhone,
+        created_at: new Date().toISOString(),
+      }));
+      
+      // Check if profile exists in Dexie
+      const profile = await db.profiles.get(mockUserId);
+      if (profile) {
+        navigate('/');
+      } else {
+        navigate('/onboarding');
+      }
+    } catch (err) {
+      setError('Mock sign-in failed: ' + (err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="flex flex-col items-center px-6 pt-12 pb-8 min-h-[100svh]">
       {/* Logo / Wordmark */}
@@ -175,7 +205,7 @@ export default function Auth() {
             <input
               type="tel"
               inputMode="tel"
-              placeholder="7XXX XXXXXX"
+              placeholder="7700 900123"
               value={phone}
               onChange={handlePhoneChange}
               className="flex-1 text-base text-[#111827] outline-none min-h-[48px] bg-transparent"
@@ -200,6 +230,14 @@ export default function Auth() {
           <p className="text-xs text-[#9CA3AF] text-center mt-2">
             UK mobile numbers only
           </p>
+          {isMockMode && (
+            <button
+              onClick={handleMockSignIn}
+              className="h-[46px] w-full rounded-xl border border-[#D1D5DB] bg-[#F9FAFB] text-[13px] font-semibold text-[#111827] cursor-pointer"
+            >
+              Mock sign in (test mode)
+            </button>
+          )}
         </div>
       )}
 

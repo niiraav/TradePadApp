@@ -68,6 +68,7 @@ export default function Settings() {
     const confirmed = window.confirm('Are you sure? You\'ll need to sign in again.');
     if (!confirmed) return;
     await supabase.auth.signOut();
+    localStorage.removeItem('tradepad_mock_user');
     useAppStore.getState().setUserId(null);
     await db.delete();
     navigate('/auth', { replace: true });

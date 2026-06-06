@@ -42,6 +42,21 @@ function AuthGuard() {
       if (!mounted) return;
 
       if (!session) {
+        // Check for mock user session (development testing)
+        const mockUser = localStorage.getItem('tradepad_mock_user');
+        if (mockUser) {
+          const mock = JSON.parse(mockUser);
+          setUserId(mock.id);
+          // Check if profile exists in Dexie for mock user
+          const profile = await db.profiles.get(mock.id);
+          if (!profile) {
+            navigate('/onboarding', { replace: true });
+            setChecking(false);
+            return;
+          }
+          setChecking(false);
+          return;
+        }
         navigate('/auth', { replace: true });
         setChecking(false);
         return;
