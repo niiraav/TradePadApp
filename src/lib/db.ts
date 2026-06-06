@@ -8,6 +8,7 @@ export interface Profile {
   phone: string;
   business_name?: string;
   trade?: 'plumber' | 'electrician' | 'builder' | 'other';
+  trade_other?: string;
   callout_charge: number;
   payment_terms: 'on_completion' | 'deposit' | 'invoice';
   default_labour_description: string;

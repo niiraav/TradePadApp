@@ -15,6 +15,7 @@ CREATE TABLE profiles (
                   )),
   default_labour_description text NOT NULL DEFAULT 'Labour',
   default_labour_charge  numeric(10,2) NOT NULL DEFAULT 0.00,
+  trade_other text,
   quote_valid_days integer NOT NULL DEFAULT 30,
   created_at      timestamptz NOT NULL DEFAULT now(),
   updated_at      timestamptz NOT NULL DEFAULT now()

@@ -209,7 +209,11 @@ export default function Settings() {
               <span className="text-sm font-medium text-[#374151]">Trade</span>
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-[#111827]">
-                  {trade ? TRADE_OPTIONS.find((t) => t.value === trade)?.label || trade : '—'}
+                  {trade
+                    ? trade === 'other' && profile?.trade_other
+                      ? profile.trade_other
+                      : TRADE_OPTIONS.find((t) => t.value === trade)?.label || trade
+                    : '—'}
                 </span>
                 <ChevronRight size={14} className="text-[#D1D5DB]" />
               </div>

@@ -37,6 +37,7 @@ export default function Onboarding() {
   const [fullName, setFullName] = useState('');
   const [businessName, setBusinessName] = useState('');
   const [trade, setTrade] = useState<TradeType | undefined>();
+  const [tradeOther, setTradeOther] = useState('');
   const [calloutCharge, setCalloutCharge] = useState('75');
   const [paymentTerms, setPaymentTerms] = useState<PaymentTerms>('on_completion');
   const [quoteValidDays, setQuoteValidDays] = useState('30');
@@ -90,6 +91,7 @@ export default function Onboarding() {
       phone: phone.trim() || '00000000000',
       business_name: businessName.trim() || undefined,
       trade,
+      trade_other: trade === 'other' ? tradeOther.trim() || undefined : undefined,
       callout_charge: parseFloat(calloutCharge) || 75,
       payment_terms: paymentTerms,
       default_labour_description: defaultLabourDesc.trim() || 'Labour',
@@ -112,6 +114,7 @@ export default function Onboarding() {
         phone: profile.phone,
         business_name: profile.business_name,
         trade: profile.trade,
+        trade_other: profile.trade_other,
         callout_charge: profile.callout_charge,
         payment_terms: profile.payment_terms,
         default_labour_description: profile.default_labour_description,
@@ -123,7 +126,7 @@ export default function Onboarding() {
       created_at: now,
       retry_count: 0,
     });
-  }, [userId, fullName, phone, businessName, trade, calloutCharge, paymentTerms, defaultLabourDesc, defaultLabourCharge, quoteValidDays]);
+  }, [userId, fullName, phone, businessName, trade, tradeOther, calloutCharge, paymentTerms, defaultLabourDesc, defaultLabourCharge, quoteValidDays]);
 
   const nextStep = () => setStep((s) => (s < 4 ? ((s + 1) as Step) : s));
   const skip = () => nextStep();
@@ -267,6 +270,25 @@ export default function Onboarding() {
                     );
                   })}
                 </div>
+
+                {trade === 'other' && (
+                  <div className="mt-3">
+                    <label className="text-[11px] font-bold uppercase tracking-[0.4px] text-[#9CA3AF] mb-1.5 block">
+                      What trade?
+                    </label>
+                    <div className="flex items-center border-[1.5px] rounded-xl min-h-[52px] overflow-hidden border-[#E5E7EB]">
+                      <input
+                        type="text"
+                        inputMode="text"
+                        placeholder="e.g. Landscaper, Painter, Roofer"
+                        value={tradeOther}
+                        onChange={(e) => setTradeOther(e.target.value)}
+                        className="flex-1 text-base text-[#111827] outline-none min-h-[52px] px-4 bg-transparent"
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
