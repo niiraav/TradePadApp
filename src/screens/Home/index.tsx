@@ -46,7 +46,7 @@ function jobTotal(items: LineItem[]): number {
 }
 
 function getDayName(d: Date): string {
-  return d.toLocaleDateString('en-GB', { weekday: 'short' });
+  return d.toLocaleDateString('en-GB', { weekday: 'long' });
 }
 
 function formatShortDate(d: Date): string {
