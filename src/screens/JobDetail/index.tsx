@@ -1272,7 +1272,7 @@ export default function JobDetail() {
               {job.notes}
             </div>
           ) : (
-            <p className="text-xs text-gray-300 italic leading-relaxed">
+            <p className="text-xs text-brand-muted italic leading-relaxed">
               Tap to add a note about this cancellation…
             </p>
           )}
@@ -1432,7 +1432,7 @@ export default function JobDetail() {
           value={chargeDesc}
           onChange={(e) => setChargeDesc(e.target.value)}
           placeholder="e.g. Corroded pipe replacement"
-          className="w-full h-12 px-3.5 border-2 border-gray-300 rounded-lg text-base font-medium text-brand-black placeholder:text-gray-300 outline-none focus:border-brand-black"
+          className="w-full h-12 px-3.5 border-2 border-brand-border rounded-lg text-base font-medium text-brand-black placeholder:text-brand-muted outline-none focus:border-brand-black"
         />
       </div>
       <div className="mb-4">
@@ -1447,7 +1447,7 @@ export default function JobDetail() {
             value={chargeAmount}
             onChange={(e) => setChargeAmount(e.target.value)}
             placeholder="0.00"
-            className="w-full h-12 pl-8 pr-3.5 border-2 border-gray-300 rounded-lg text-base font-medium text-brand-black placeholder:text-gray-300 outline-none focus:border-brand-black"
+            className="w-full h-12 pl-8 pr-3.5 border-2 border-brand-border rounded-lg text-base font-medium text-brand-black placeholder:text-brand-muted outline-none focus:border-brand-black"
           />
         </div>
       </div>
@@ -1474,7 +1474,7 @@ export default function JobDetail() {
           onChange={(e) => setNoteText(e.target.value)}
           placeholder="What happened?"
           rows={3}
-          className="w-full px-3.5 py-3 border-2 border-gray-300 rounded-lg text-base font-medium text-brand-black placeholder:text-gray-300 outline-none focus:border-brand-black resize-none"
+          className="w-full px-3.5 py-3 border-2 border-brand-border rounded-lg text-base font-medium text-brand-black placeholder:text-brand-muted outline-none focus:border-brand-black resize-none"
         />
       </div>
       <Button
@@ -1566,7 +1566,7 @@ export default function JobDetail() {
             value={reminderText || defaultText}
             onChange={(e) => setReminderText(e.target.value)}
             rows={4}
-            className="w-full px-3.5 py-3 border-2 border-gray-300 rounded-lg text-base font-medium text-brand-dark placeholder:text-gray-300 outline-none focus:border-brand-black resize-none leading-relaxed"
+            className="w-full px-3.5 py-3 border-2 border-brand-border rounded-lg text-base font-medium text-brand-dark placeholder:text-brand-muted outline-none focus:border-brand-black resize-none leading-relaxed"
           />
           <p className="text-micro text-brand-muted text-right mt-1">Tap to edit before sending</p>
         </div>
@@ -1601,7 +1601,7 @@ export default function JobDetail() {
           type="datetime-local"
           value={rescheduleDate}
           onChange={(e) => setRescheduleDate(e.target.value)}
-          className="w-full h-12 px-3.5 border-2 border-gray-300 rounded-lg text-base font-medium text-brand-black placeholder:text-gray-300 outline-none focus:border-brand-black"
+          className="w-full h-12 px-3.5 border-2 border-brand-border rounded-lg text-base font-medium text-brand-black placeholder:text-brand-muted outline-none focus:border-brand-black"
         />
       </div>
       <Button
@@ -1630,7 +1630,7 @@ export default function JobDetail() {
           value={calloutDesc}
           onChange={(e) => setCalloutDesc(e.target.value)}
           placeholder="e.g. Callout charge"
-          className="w-full h-12 px-3.5 border-2 border-gray-300 rounded-lg text-base font-medium text-brand-black placeholder:text-gray-300 outline-none focus:border-brand-black"
+          className="w-full h-12 px-3.5 border-2 border-brand-border rounded-lg text-base font-medium text-brand-black placeholder:text-brand-muted outline-none focus:border-brand-black"
         />
       </div>
       <div className="mb-4">
@@ -1645,7 +1645,7 @@ export default function JobDetail() {
             value={calloutAmount}
             onChange={(e) => setCalloutAmount(e.target.value)}
             placeholder="0.00"
-            className="w-full h-12 pl-8 pr-3.5 border-2 border-gray-300 rounded-lg text-base font-medium text-brand-black placeholder:text-gray-300 outline-none focus:border-brand-black"
+            className="w-full h-12 pl-8 pr-3.5 border-2 border-brand-border rounded-lg text-base font-medium text-brand-black placeholder:text-brand-muted outline-none focus:border-brand-black"
           />
         </div>
       </div>
@@ -1704,7 +1704,7 @@ export default function JobDetail() {
           type="text"
           value={editTitle}
           onChange={(e) => setEditTitle(e.target.value)}
-          className="w-full h-12 px-3.5 border-2 border-gray-300 rounded-lg text-base font-medium text-brand-black outline-none focus:border-brand-black"
+          className="w-full h-12 px-3.5 border-2 border-brand-border rounded-lg text-base font-medium text-brand-black outline-none focus:border-brand-black"
         />
       </div>
       <div className="mb-3">
@@ -1716,7 +1716,7 @@ export default function JobDetail() {
             type="date"
             value={editDate}
             onChange={(e) => setEditDate(e.target.value)}
-            className="w-full h-12 px-3.5 pr-10 border-2 border-gray-300 rounded-lg text-base font-medium text-brand-black outline-none focus:border-brand-black bg-white appearance-none"
+            className="w-full h-12 px-3.5 pr-10 border-2 border-brand-border rounded-lg text-base font-medium text-brand-black outline-none focus:border-brand-black bg-white appearance-none"
           />
           <Calendar size={18} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-brand-muted" />
         </div>
@@ -1730,7 +1730,7 @@ export default function JobDetail() {
             type="time"
             value={editStartTime}
             onChange={(e) => setEditStartTime(e.target.value)}
-            className="w-full h-12 px-3.5 pr-10 border-2 border-gray-300 rounded-lg text-base font-medium text-brand-black outline-none focus:border-brand-black bg-white appearance-none"
+            className="w-full h-12 px-3.5 pr-10 border-2 border-brand-border rounded-lg text-base font-medium text-brand-black outline-none focus:border-brand-black bg-white appearance-none"
           />
           <Clock size={18} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-brand-muted" />
         </div>
@@ -1742,7 +1742,7 @@ export default function JobDetail() {
         {!editEndTime ? (
           <button
             onClick={() => setEditEndTime(addTwoHours(editStartTime))}
-            className="w-full h-12 px-3.5 border-2 border-gray-300 border-dashed rounded-lg flex items-center gap-2 text-sm font-medium text-brand-muted cursor-pointer bg-white hover:bg-brand-surface active:bg-brand-borderLight transition-colors"
+            className="w-full h-12 px-3.5 border-2 border-brand-border border-dashed rounded-lg flex items-center gap-2 text-sm font-medium text-brand-muted cursor-pointer bg-white hover:bg-brand-surface active:bg-brand-borderLight transition-colors"
           >
             <Plus size={14} className="text-brand-muted" />
   Add end time
@@ -1753,7 +1753,7 @@ export default function JobDetail() {
               type="time"
               value={editEndTime}
               onChange={(e) => setEditEndTime(e.target.value)}
-              className="w-full h-12 px-3.5 pr-10 border-2 border-gray-300 rounded-lg text-base font-medium text-brand-black outline-none focus:border-brand-black bg-white appearance-none"
+              className="w-full h-12 px-3.5 pr-10 border-2 border-brand-border rounded-lg text-base font-medium text-brand-black outline-none focus:border-brand-black bg-white appearance-none"
             />
             <button
               onClick={() => setEditEndTime('')}
@@ -1773,7 +1773,7 @@ export default function JobDetail() {
           onChange={(e) => setEditNotes(e.target.value)}
           placeholder="Any notes about this job..."
           rows={3}
-          className="w-full px-3.5 py-3 border-2 border-gray-300 rounded-lg text-base font-medium text-brand-black placeholder:text-gray-300 outline-none focus:border-brand-black resize-none"
+          className="w-full px-3.5 py-3 border-2 border-brand-border rounded-lg text-base font-medium text-brand-black placeholder:text-brand-muted outline-none focus:border-brand-black resize-none"
         />
       </div>
       <Button variant="primary" onClick={handleEditDetails}>

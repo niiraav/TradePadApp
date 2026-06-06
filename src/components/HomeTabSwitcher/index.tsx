@@ -25,7 +25,7 @@ export const HomeTabSwitcher: React.FC<HomeTabSwitcherProps> = ({
       >
         Today
         {todayBadgeCount !== undefined && todayBadgeCount > 0 && (
-          <span className="min-w-[16px] h-4 bg-status-error text-white rounded-lg text-micro font-bold flex items-center justify-center px-1">
+          <span className="min-w-[16px] h-4 bg-status-error text-brand-surface rounded-lg text-micro font-bold flex items-center justify-center px-1">
             {todayBadgeCount}
           </span>
         )}
@@ -40,7 +40,7 @@ export const HomeTabSwitcher: React.FC<HomeTabSwitcherProps> = ({
       >
         Tasks
         {tasksBadgeCount !== undefined && tasksBadgeCount > 0 && (
-          <span className="min-w-[16px] h-4 bg-status-error text-white rounded-lg text-micro font-bold flex items-center justify-center px-1">
+          <span className="min-w-[16px] h-4 bg-status-error text-brand-surface rounded-lg text-micro font-bold flex items-center justify-center px-1">
             {tasksBadgeCount}
           </span>
         )}

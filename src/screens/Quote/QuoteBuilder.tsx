@@ -548,7 +548,7 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onS
               onFocus={() => setTitleFocused(true)}
               onBlur={handleTitleBlur}
               placeholder="e.g. New boiler installation"
-              className={`w-full min-h-12 px-3.5 border-2 rounded-lg text-base font-medium text-brand-black placeholder:text-gray-300 placeholder:italic outline-none ${
+              className={`w-full min-h-12 px-3.5 border-2 rounded-lg text-base font-medium text-brand-black placeholder:text-brand-muted placeholder:italic outline-none ${
                 titleFocused ? 'border-brand-black' : 'border-brand-border'
               }`}
             />
@@ -642,7 +642,7 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onS
                   onChange={(e) => updateItemDesc(item.id, e.target.value)}
                   onBlur={saveItemBlur}
                   placeholder="Item description"
-                  className="flex-1 min-h-12 px-2 border-2 border-brand-border rounded-lg text-base font-medium text-brand-black placeholder:text-gray-300 placeholder:italic outline-none focus:border-brand-black"
+                  className="flex-1 min-h-12 px-2 border-2 border-brand-border rounded-lg text-base font-medium text-brand-black placeholder:text-brand-muted placeholder:italic outline-none focus:border-brand-black"
                 />
                 <div className="flex items-center gap-1 shrink-0">
                   <span className="text-sm text-brand-mid">£</span>
@@ -653,7 +653,7 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onS
                     onChange={(e) => updateItemAmount(item.id, e.target.value)}
                     onBlur={saveItemBlur}
                     placeholder="0.00"
-                    className={`w-20 min-h-12 px-2 border-2 rounded-lg text-base font-medium text-brand-black text-right outline-none focus:border-brand-black placeholder:text-gray-300 ${
+                    className={`w-20 min-h-12 px-2 border-2 rounded-lg text-base font-medium text-brand-black text-right outline-none focus:border-brand-black placeholder:text-brand-muted ${
                       (item.amount === '' || item.amountNum === 0) ? 'border-status-error' : 'border-brand-border'
                     }`}
                   />
@@ -683,7 +683,7 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onS
                 <button
                   key={desc}
                   onClick={() => addQuickItem(desc)}
-                  className="inline-flex items-center gap-1 h-8 px-3 rounded-full bg-brand-borderLight text-xxs font-medium text-brand-dark cursor-pointer border border-brand-border hover:bg-brand-border active:bg-gray-300 transition-colors"
+                  className="inline-flex items-center gap-1 h-8 px-3 rounded-full bg-brand-borderLight text-xxs font-medium text-brand-dark cursor-pointer border border-brand-border hover:bg-brand-border active:bg-brand-borderLight transition-colors"
                 >
                   <Plus size={12} className="text-brand-muted" />
   {desc}
@@ -714,7 +714,7 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onS
             onBlur={handleNotesBlur}
             placeholder="e.g. Includes all parts, labour, and disposal of old unit"
             rows={3}
-            className="w-full min-h-20 px-3.5 py-2.5 border-2 border-brand-border rounded-lg text-base font-medium text-brand-black placeholder:text-gray-300 placeholder:italic outline-none focus:border-brand-black resize-none leading-relaxed"
+            className="w-full min-h-20 px-3.5 py-2.5 border-2 border-brand-border rounded-lg text-base font-medium text-brand-black placeholder:text-brand-muted placeholder:italic outline-none focus:border-brand-black resize-none leading-relaxed"
           />
         </div>
 
@@ -791,7 +791,7 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onS
                   onChange={(e) => setDepositCustom(e.target.value)}
                   onBlur={handleDepositCustomBlur}
                   placeholder="e.g. 15"
-                  className="w-full min-h-12 px-3.5 border-2 border-brand-border rounded-lg text-base font-medium text-brand-black placeholder:text-gray-300 placeholder:italic outline-none focus:border-brand-black"
+                  className="w-full min-h-12 px-3.5 border-2 border-brand-border rounded-lg text-base font-medium text-brand-black placeholder:text-brand-muted placeholder:italic outline-none focus:border-brand-black"
                 />
               </div>
             )}

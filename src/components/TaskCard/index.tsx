@@ -65,7 +65,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
     ].filter(Boolean) as Array<{ label: string; onClick: () => void }>;
 
     return (
-      <div className="bg-white border border-gray-300 rounded-lg overflow-hidden mb-5">
+      <div className="bg-white border border-brand-border rounded-lg overflow-hidden mb-5">
         {/* Header row */}
         <div className="flex items-center gap-2.5 px-3.5 py-3">
           <Phone size={18} className="text-brand-mid shrink-0" />
@@ -90,7 +90,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
                   key={i}
                   onClick={action.onClick}
                   className={`
-                    flex-1 h-11.5 flex items-center justify-center
+                    flex-1 min-h-11 flex items-center justify-center
                     text-xs font-semibold cursor-pointer
                     border-r border-brand-borderLight last:border-r-0
                     ${isPrimary ? 'text-brand-black' : ''}
@@ -137,7 +137,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
             <button
               key={i}
               onClick={action.onClick}
-              className="h-11.5 px-4 rounded-lg border border-gray-300 text-xs font-semibold text-brand-black bg-white cursor-pointer"
+              className="min-h-11 px-4 rounded-lg border border-brand-border text-xs font-semibold text-brand-black bg-white cursor-pointer"
             >
               {action.label}
             </button>

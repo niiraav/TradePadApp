@@ -633,7 +633,7 @@ export default function Home() {
 
   const renderNoJobsToday = () => (
     <div className="px-4 mt-6">
-      <div className="border border-dashed border-gray-300 rounded-lg p-8 text-center">
+      <div className="border border-dashed border-brand-border rounded-lg p-8 text-center">
         <p className="text-base font-semibold text-brand-black">No jobs today</p>
         <p className="text-xs text-brand-muted mt-1.5">
           {formatShortDate(today)} · Free day
@@ -656,7 +656,7 @@ export default function Home() {
 
   const renderAllClear = () => (
     <div className="px-4 mt-6">
-      <div className="border border-dashed border-gray-300 rounded-lg p-8 text-center">
+      <div className="border border-dashed border-brand-border rounded-lg p-8 text-center">
         <p className="text-base font-semibold text-brand-black">All clear</p>
         <p className="text-xs text-brand-muted mt-1.5">
           Nothing needs your attention today
@@ -688,7 +688,7 @@ export default function Home() {
                 Can't ignore
               </span>
             </div>
-            <div className="border border-gray-300 rounded-lg overflow-hidden mb-5">
+            <div className="border border-brand-border rounded-lg overflow-hidden mb-5">
               {l2Tasks.map((task) => (
                 <div
                   key={task.id}
@@ -811,7 +811,7 @@ export default function Home() {
 
         {tasks.length === 0 && (
           <div className="px-4 mt-6">
-            <div className="border border-dashed border-gray-300 rounded-lg p-8 text-center">
+            <div className="border border-dashed border-brand-border rounded-lg p-8 text-center">
               <p className="text-base font-semibold text-brand-black">All clear</p>
               <p className="text-xs text-brand-muted mt-1.5">Nothing needs your attention</p>
               <div className="flex gap-2 mt-5">

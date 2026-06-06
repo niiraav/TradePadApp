@@ -164,7 +164,7 @@ export default function CustomerDetails({ customerId, onComplete, onCancel }: Cu
               onFocus={() => setNameFocused(true)}
               onBlur={() => setNameFocused(false)}
               placeholder="e.g. Richards"
-              className={`w-full h-12 px-3.5 border-2 rounded-lg text-base font-medium text-brand-black placeholder:text-gray-300 placeholder:italic outline-none ${
+              className={`w-full h-12 px-3.5 border-2 rounded-lg text-base font-medium text-brand-black placeholder:text-brand-muted placeholder:italic outline-none ${
                 nameFocused ? 'border-brand-black' : 'border-brand-border'
               }`}
             />
@@ -183,7 +183,7 @@ export default function CustomerDetails({ customerId, onComplete, onCancel }: Cu
               onFocus={() => setPhoneFocused(true)}
               onBlur={() => setPhoneFocused(false)}
               placeholder="e.g. 07700 900123"
-              className={`w-full h-12 px-3.5 border-2 rounded-lg text-base font-medium text-brand-black placeholder:text-gray-300 placeholder:italic outline-none ${
+              className={`w-full h-12 px-3.5 border-2 rounded-lg text-base font-medium text-brand-black placeholder:text-brand-muted placeholder:italic outline-none ${
                 phoneError ? 'border-status-error' : phoneFocused ? 'border-brand-black' : 'border-brand-border'
               }`}
             />
@@ -203,7 +203,7 @@ export default function CustomerDetails({ customerId, onComplete, onCancel }: Cu
               onFocus={() => setAddressFocused(true)}
               onBlur={() => setAddressFocused(false)}
               placeholder="e.g. 14 Birch Lane, Holmfirth"
-              className={`w-full h-12 px-3.5 border-2 rounded-lg text-base font-medium text-brand-black placeholder:text-gray-300 placeholder:italic outline-none ${
+              className={`w-full h-12 px-3.5 border-2 rounded-lg text-base font-medium text-brand-black placeholder:text-brand-muted placeholder:italic outline-none ${
                 addressFocused ? 'border-brand-black' : 'border-brand-border'
               }`}
             />

@@ -158,8 +158,8 @@ export default function LogMissedCall({ onDone }: LogMissedCallProps) {
               value={phone}
               onChange={(e) => { setPhone(e.target.value); setPhoneError(false); }}
               placeholder="e.g. 07700 900123"
-              className={`w-full h-12 px-3.5 border-2 rounded-lg text-base font-medium text-brand-black placeholder:text-gray-300 outline-none ${
-                phoneError ? 'border-status-error' : 'border-gray-300 focus:border-brand-black'
+              className={`w-full h-12 px-3.5 border-2 rounded-lg text-base font-medium text-brand-black placeholder:text-brand-muted outline-none ${
+                phoneError ? 'border-status-error' : 'border-brand-border focus:border-brand-black'
               }`}
             />
             {phoneError && (
@@ -175,7 +175,7 @@ export default function LogMissedCall({ onDone }: LogMissedCallProps) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Richards"
-              className="w-full h-12 px-3.5 border-2 border-gray-300 rounded-lg text-base font-medium text-brand-black placeholder:text-gray-300 placeholder:italic outline-none focus:border-brand-black"
+              className="w-full h-12 px-3.5 border-2 border-brand-border rounded-lg text-base font-medium text-brand-black placeholder:text-brand-muted placeholder:italic outline-none focus:border-brand-black"
             />
           </div>
         </div>

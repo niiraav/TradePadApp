@@ -126,7 +126,7 @@ export default function Settings() {
       </div>
 
       {/* Scrollable body */}
-      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-[calc(80px_+_env(safe-area-inset-bottom))] min-h-0">
+      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-4 min-h-0">
         {/* Nudge banner */}
         {showNudge && (
           <div className="bg-status-redBg border border-red-200 rounded-lg p-3 mb-4 flex items-start gap-2.5">
@@ -198,7 +198,7 @@ export default function Settings() {
                       <span className={`text-sm font-medium ${businessNameEmpty ? 'text-status-error italic' : 'text-brand-black'}`}>
                         {businessNameEmpty ? 'Tap to add ›' : businessName}
                       </span>
-                      <ChevronRight size={14} className="text-gray-300" />
+                      <ChevronRight size={14} className="text-brand-muted" />
                     </>
                   )}
                 </div>
@@ -231,7 +231,7 @@ export default function Settings() {
                       : TRADE_OPTIONS.find((t) => t.value === trade)?.label || trade
                     : '—'}
                 </span>
-                <ChevronRight size={14} className="text-gray-300" />
+                <ChevronRight size={14} className="text-brand-muted" />
               </div>
             </div>
           </div>
@@ -252,7 +252,7 @@ export default function Settings() {
                 <span className="text-sm font-medium text-brand-black">
                   {PAYMENT_OPTIONS.find((p) => p.value === paymentTerms)?.label || paymentTerms}
                 </span>
-                <ChevronRight size={14} className="text-gray-300" />
+                <ChevronRight size={14} className="text-brand-muted" />
               </div>
             </div>
             <div className="px-4">
@@ -350,7 +350,7 @@ export default function Settings() {
             >
               <span className="text-sm text-brand-dark">Privacy policy</span>
               <div className="flex items-center gap-2">
-                <ExternalLink size={14} className="text-gray-300" />
+                <ExternalLink size={14} className="text-brand-muted" />
               </div>
             </div>
             <div
@@ -359,7 +359,7 @@ export default function Settings() {
             >
               <span className="text-sm text-brand-dark">Terms of service</span>
               <div className="flex items-center gap-2">
-                <ExternalLink size={14} className="text-gray-300" />
+                <ExternalLink size={14} className="text-brand-muted" />
               </div>
             </div>
             <div
@@ -467,11 +467,6 @@ export default function Settings() {
           })}
         </div>
       </BottomSheet>
-
-      {/* Footer spacer — matches Jobs/Home so content clears the TabBar */}
-      <div className="shrink-0 pb-[env(safe-area-inset-bottom)]">
-        <div className="h-3" />
-      </div>
 
       {/* Tab bar */}
       <TabBar activeTab="settings" onNavigate={handleNavigate} />

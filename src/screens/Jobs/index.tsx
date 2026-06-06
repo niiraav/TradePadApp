@@ -78,8 +78,8 @@ const statusDotClasses: Record<JobStatus, string> = {
   awaiting_payment: 'bg-status-amber',
   no_show: 'bg-amber-800',
   paid: 'bg-brand-muted',
-  cancelled: 'bg-gray-300',
-  written_off: 'bg-gray-300',
+  cancelled: 'bg-brand-border',
+  written_off: 'bg-brand-border',
 };
 
 const terminalStatuses: JobStatus[] = ['paid', 'cancelled', 'written_off'];
@@ -297,7 +297,7 @@ export default function Jobs() {
       <span className="text-xs font-semibold text-brand-muted flex-1">
         {statusLabels[status]}
       </span>
-      <span className="text-xxs text-gray-300">
+      <span className="text-xxs text-brand-muted">
         {count} job{count !== 1 ? 's' : ''}
       </span>
       <ChevronRight size={16} className="shrink-0 text-brand-muted" />
@@ -423,18 +423,8 @@ export default function Jobs() {
       {hasAnyJobs && (
         <div className="sticky bottom-0 z-30 bg-white border-t border-brand-borderLight">
           <div className="flex gap-2 px-4 py-2.5 pb-[calc(10px_+_env(safe-area-inset-bottom))]">
-            <button
-              onClick={() => navigate('/quote')}
-              className="flex-1 h-11 bg-brand-black text-brand-surface border border-brand-black rounded-xl text-xs font-semibold cursor-pointer"
-            >
-              + New Quote
-            </button>
-            <button
-              onClick={() => navigate('/quote', { state: { entryPoint: 'missed_call' } })}
-              className="flex-1 h-11 bg-white text-brand-black border border-gray-300 rounded-xl text-xs font-semibold cursor-pointer"
-            >
-              Log Missed Call
-            </button>
+            <div className="flex-1"><Button variant="primary" onClick={() => navigate('/quote')} fullWidth>+ New Quote</Button></div>
+            <div className="flex-1"><Button variant="secondary" onClick={() => navigate('/quote', { state: { entryPoint: 'missed_call' } })} fullWidth>Log Missed Call</Button></div>
           </div>
         </div>
       )}

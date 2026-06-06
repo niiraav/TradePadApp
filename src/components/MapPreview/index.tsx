@@ -69,7 +69,7 @@ export const MapPreview: React.FC<MapPreviewProps> = ({ address, onTap }) => {
 
       {/* Address label */}
       <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent px-3 py-2">
-        <p className="text-xxs text-white font-medium truncate drop-shadow">
+        <p className="text-xxs text-brand-surface font-medium truncate drop-shadow">
           {address}
         </p>
       </div>
