@@ -780,18 +780,21 @@ export default function JobDetail() {
           {(job?.status === 'booked' || job?.status === 'no_show') && (
             <button
               onClick={() => setSheet('cancel')}
-              className="text-label text-brand-muted cursor-pointer underline underline-offset-2 py-1"
+              className="text-sm font-medium text-brand-muted cursor-pointer py-1 px-2 hover:bg-brand-surface rounded-md transition-colors"
+              aria-label="Cancel job"
             >
-              Cancel job
+              Cancel
             </button>
           )}
-          {job && job.status !== 'quoted' && <StatusBadge status={job.status} />}
         </div>
       </div>
       {/* Name + contact actions row */}
       <div className="flex items-start gap-3 mt-1">
         <div className="flex-1 min-w-0">
-          <h1 className="text-title font-bold text-brand-black truncate leading-tight">{customer?.name}</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-title font-bold text-brand-black truncate leading-tight">{customer?.name}</h1>
+            {job && job.status !== 'quoted' && <StatusBadge status={job.status} />}
+          </div>
           <p className="text-sm font-medium text-brand-mid mt-1 truncate">{job?.title}</p>
         </div>
         {hasContactButtons && (
