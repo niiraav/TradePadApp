@@ -48,7 +48,7 @@ input, button, textarea, select {
   animation: pulse 1.5s infinite;
 }
 
-/* Hide native date/time picker icons — use custom Lucide icons instead */
+/* Hide native date/time picker icons */
 input[type="date"]::-webkit-calendar-picker-indicator,
 input[type="time"]::-webkit-calendar-picker-indicator {
   opacity: 0;
@@ -67,7 +67,6 @@ input[type="time"]::-webkit-date-and-time-value {
   text-align: left;
 }
 
-/* iOS Safari: fully normalise date/time inputs so they look like regular text inputs */
 input[type="date"],
 input[type="time"] {
   -webkit-appearance: none;
@@ -85,77 +84,618 @@ input[type="time"]::-webkit-clear-button {
   display: none;
 }
 
-/* Dark mode: inputs should inherit dark background */
-input, textarea, select {
+/* ───────────────────────────────────────────────────────────────────
+   Dark mode overrides — comprehensive, Cal.com-inspired
+   Strategy: every Tailwind bg-white / text-gray-* / bg-gray-* utility
+   is remapped in dark mode so components do not need to know about dark.
+   ─────────────────────────────────────────────────────────────────── */
+
+/* Dark mode: form inputs inherit theme */
+.dark input,
+.dark textarea,
+.dark select {
   background-color: var(--app-shell-bg);
   color: var(--app-text);
 }
 
-.dark input, .dark textarea, .dark select {
-  border-color: var(--brand-border);
-}
-
-.dark input::placeholder, .dark textarea::placeholder {
+.dark input::placeholder,
+.dark textarea::placeholder {
   color: var(--brand-muted);
 }
 
-/* Dark mode: bottom sheet panels */
-.dark .sheet-panel {
-  background: var(--app-shell-bg);
+/* ── Background overrides ──────────────────────────────────────── */
+
+.dark .bg-white,
+.dark .hover\:bg-white:hover,
+.dark .focus\:bg-white:focus,
+.dark .active\:bg-white:active,
+.dark .focus-within\:bg-white:focus-within {
+  background-color: var(--brand-surface) !important;
 }
 
-/* Dark mode: sticky footer */
-.dark .sticky-footer {
-  background: var(--app-shell-bg);
-  border-color: var(--brand-border);
+/* App-shell-blending surfaces (headers, footers, tab bars) */
+.dark .bg-\[var\(--app-shell-bg\)\] {
+  background-color: var(--app-shell-bg) !important;
 }
 
-/* ── Dark mode: remap hardcoded Tailwind utility classes ── */
-.dark .bg-white {
-  background-color: var(--app-shell-bg);
-}
-.dark .bg-gray-50 {
-  background-color: var(--brand-surface);
-}
-.dark .bg-gray-200 {
-  background-color: var(--brand-surface);
-}
-.dark .bg-gray-300 {
-  background-color: var(--brand-surface);
-}
-.dark .text-gray-300 {
-  color: var(--brand-muted);
-}
-.dark .text-gray-400 {
-  color: var(--brand-mid);
-}
-.dark .text-gray-500 {
-  color: var(--brand-mid);
-}
-.dark .border-gray-200 {
-  border-color: var(--brand-border);
-}
-.dark .bg-red-50 {
-  background-color: var(--color-red-bg);
-}
-.dark .text-red-600 {
-  color: #F87171;
+.dark .bg-gray-50,
+.dark .hover\:bg-gray-50:hover,
+.dark .focus\:bg-gray-50:focus { background-color: var(--brand-surface) !important; }
+
+.dark .bg-gray-100,
+.dark .hover\:bg-gray-100:hover,
+.dark .focus\:bg-gray-100:focus { background-color: var(--brand-surface) !important; }
+
+.dark .bg-gray-200,
+.dark .hover\:bg-gray-200:hover,
+.dark .focus\:bg-gray-200:focus { background-color: var(--brand-border-light) !important; }
+
+.dark .bg-gray-300,
+.dark .hover\:bg-gray-300:hover,
+.dark .focus\:bg-gray-300:focus { background-color: var(--brand-border) !important; }
+
+.dark .bg-gray-400,
+.dark .hover\:bg-gray-400:hover,
+.dark .focus\:bg-gray-400:focus { background-color: var(--brand-muted) !important; }
+
+.dark .bg-gray-500,
+.dark .hover\:bg-gray-500:hover,
+.dark .focus\:bg-gray-500:focus { background-color: var(--brand-mid) !important; }
+
+.dark .bg-gray-600,
+.dark .hover\:bg-gray-600:hover,
+.dark .focus\:bg-gray-600:focus { background-color: var(--brand-dark) !important; }
+
+.dark .bg-gray-700,
+.dark .hover\:bg-gray-700:hover,
+.dark .focus\:bg-gray-700:focus { background-color: var(--brand-black) !important; }
+
+.dark .bg-gray-800,
+.dark .hover\:bg-gray-800:hover,
+.dark .focus\:bg-gray-800:focus { background-color: var(--app-text) !important; }
+
+.dark .bg-gray-900,
+.dark .hover\:bg-gray-900:hover,
+.dark .focus\:bg-gray-900:focus { background-color: var(--app-text) !important; }
+
+.dark .bg-black\/25,
+.dark .bg-black\/20,
+.dark .bg-black\/30,
+.dark .bg-black\/40,
+.dark .bg-black\/50,
+.dark .bg-black\/60 {
+  background-color: rgba(0,0,0,0.70) !important;
 }
 
-/* Keep switch knob white in dark mode */
-.dark .switch-knob {
-  background-color: #ffffff !important;
+/* ── Text overrides ──────────────────────────────────────────────── */
+
+.dark .text-brand-black,
+.dark .hover\:text-brand-black:hover,
+.dark .focus\:text-brand-black:focus { color: var(--app-text) !important; }
+
+.dark .text-gray-300,
+.dark .hover\:text-gray-300:hover,
+.dark .focus\:text-gray-300:focus { color: var(--brand-border) !important; }
+
+.dark .text-gray-400,
+.dark .hover\:text-gray-400:hover,
+.dark .focus\:text-gray-400:focus { color: var(--brand-muted) !important; }
+
+.dark .text-gray-500,
+.dark .hover\:text-gray-500:hover,
+.dark .focus\:text-gray-500:focus { color: var(--brand-mid) !important; }
+
+.dark .text-gray-600,
+.dark .hover\:text-gray-600:hover,
+.dark .focus\:text-gray-600:focus { color: var(--brand-dark) !important; }
+
+.dark .text-gray-700,
+.dark .hover\:text-gray-700:hover,
+.dark .focus\:text-gray-700:focus { color: var(--app-text-secondary) !important; }
+
+.dark .text-gray-800,
+.dark .hover\:text-gray-800:hover,
+.dark .focus\:text-gray-800:focus { color: var(--app-text) !important; }
+
+.dark .text-gray-900,
+.dark .hover\:text-gray-900:hover,
+.dark .focus\:text-gray-900:focus { color: var(--app-text) !important; }
+
+.dark .text-black,
+.dark .hover\:text-black:hover,
+.dark .focus\:text-black:focus { color: var(--app-text) !important; }
+
+/* ── Border overrides ────────────────────────────────────────────── */
+
+.dark .border-gray-100,
+.dark .hover\:border-gray-100:hover,
+.dark .focus\:border-gray-100:focus { border-color: var(--brand-border-light) !important; }
+
+.dark .border-gray-200,
+.dark .hover\:border-gray-200:hover,
+.dark .focus\:border-gray-200:focus { border-color: var(--brand-border) !important; }
+
+.dark .border-gray-300,
+.dark .hover\:border-gray-300:hover,
+.dark .focus\:border-gray-300:focus { border-color: var(--brand-border) !important; }
+
+.dark .border-gray-400,
+.dark .hover\:border-gray-400:hover,
+.dark .focus\:border-gray-400:focus { border-color: var(--brand-muted) !important; }
+
+.dark .border-gray-500,
+.dark .hover\:border-gray-500:hover,
+.dark .focus\:border-gray-500:focus { border-color: var(--brand-mid) !important; }
+
+.dark .border-gray-600,
+.dark .hover\:border-gray-600:hover,
+.dark .focus\:border-gray-600:focus { border-color: var(--brand-dark) !important; }
+
+.dark .border-gray-700,
+.dark .hover\:border-gray-700:hover,
+.dark .focus\:border-gray-700:focus { border-color: var(--app-text-secondary) !important; }
+
+.dark .border-gray-800,
+.dark .hover\:border-gray-800:hover,
+.dark .focus\:border-gray-800:focus { border-color: var(--app-text) !important; }
+
+.dark .border-black,
+.dark .hover\:border-black:hover,
+.dark .focus\:border-black:focus { border-color: var(--app-text) !important; }
+
+/* ── Semantic status colours in dark mode ──────────────────────── */
+
+.dark .bg-red-50,
+.dark .hover\:bg-red-50:hover,
+.dark .focus\:bg-red-50:focus { background-color: var(--color-red-bg) !important; }
+.dark .text-red-600,
+.dark .hover\:text-red-600:hover,
+.dark .focus\:text-red-600:focus { color: #F87171 !important; }
+.dark .text-red-500,
+.dark .hover\:text-red-500:hover,
+.dark .focus\:text-red-500:focus { color: #F87171 !important; }
+.dark .text-red-400,
+.dark .hover\:text-red-400:hover,
+.dark .focus\:text-red-400:focus { color: #FCA5A5 !important; }
+
+.dark .bg-green-50,
+.dark .hover\:bg-green-50:hover,
+.dark .focus\:bg-green-50:focus { background-color: var(--color-green-bg) !important; }
+.dark .text-green-600,
+.dark .hover\:text-green-600:hover,
+.dark .focus\:text-green-600:focus { color: #34D399 !important; }
+.dark .text-green-500,
+.dark .hover\:text-green-500:hover,
+.dark .focus\:text-green-500:focus { color: #34D399 !important; }
+.dark .text-green-400,
+.dark .hover\:text-green-400:hover,
+.dark .focus\:text-green-400:focus { color: #6EE7B7 !important; }
+
+.dark .bg-amber-50,
+.dark .hover\:bg-amber-50:hover,
+.dark .focus\:bg-amber-50:focus { background-color: var(--color-amber-bg) !important; }
+.dark .text-amber-600,
+.dark .hover\:text-amber-600:hover,
+.dark .focus\:text-amber-600:focus { color: #FBBF24 !important; }
+.dark .text-amber-500,
+.dark .hover\:text-amber-500:hover,
+.dark .focus\:text-amber-500:focus { color: #FBBF24 !important; }
+.dark .text-amber-400,
+.dark .hover\:text-amber-400:hover,
+.dark .focus\:text-amber-400:focus { color: #FCD34D !important; }
+
+.dark .bg-blue-50,
+.dark .hover\:bg-blue-50:hover,
+.dark .focus\:bg-blue-50:focus { background-color: var(--color-blue-bg) !important; }
+.dark .text-blue-600,
+.dark .hover\:text-blue-600:hover,
+.dark .focus\:text-blue-600:focus { color: #60A5FA !important; }
+.dark .text-blue-500,
+.dark .hover\:text-blue-500:hover,
+.dark .focus\:text-blue-500:focus { color: #60A5FA !important; }
+.dark .text-blue-400,
+.dark .hover\:text-blue-400:hover,
+.dark .focus\:text-blue-400:focus { color: #93C5FD !important; }
+
+/* ── Legacy component classes ───────────────────────────────────── */
+
+.dark .sheet-panel,
+.dark .focus\:sheet-panel:focus,
+.dark .hover\:sheet-panel:hover { background: var(--app-shell-bg) !important; }
+
+.dark .sticky-footer,
+.dark .focus\:sticky-footer:focus,
+.dark .hover\:sticky-footer:hover {
+  background: var(--app-shell-bg) !important;
+  border-color: var(--brand-border) !important;
 }
 
-.dark .border-gray-300 {
-  border-color: var(--brand-border);
+/* Keep switch knob white in dark mode (it's a control, not a surface) */
+.dark .switch-knob,
+.dark .focus\:switch-knob:focus,
+.dark .hover\:switch-knob:hover { background-color: #ffffff !important; }
+
+/* ── Ring / outline overrides for dark mode focus states ─────────── */
+
+.dark .focus\:ring-brand-black:focus,
+.dark .focus\:ring-black:focus {
+  --tw-ring-color: var(--app-text) !important;
 }
-.dark .text-gray-600 {
-  color: var(--brand-mid);
+
+.dark .focus\:border-brand-black:focus,
+.dark .focus\:border-black:focus {
+  border-color: var(--app-text) !important;
 }
-.dark .bg-gray-100 {
-  background-color: var(--brand-surface);
+
+.dark .focus\:ring-gray-300:focus { --tw-ring-color: var(--brand-border) !important; }
+.dark .focus\:ring-gray-400:focus { --tw-ring-color: var(--brand-muted) !important; }
+.dark .focus\:ring-gray-500:focus { --tw-ring-color: var(--brand-mid) !important; }
+.dark .focus\:ring-gray-600:focus { --tw-ring-color: var(--brand-dark) !important; }
+.dark .focus\:ring-red-500:focus { --tw-ring-color: #F87171 !important; }
+.dark .focus\:ring-green-500:focus { --tw-ring-color: #34D399 !important; }
+.dark .focus\:ring-blue-500:focus { --tw-ring-color: #60A5FA !important; }
+
+/* ── dark: prefixed Tailwind utilities (caught via attribute/class) ── */
+
+.dark .dark\:bg-white { background-color: var(--brand-surface) !important; }
+.dark .dark\:text-white { color: var(--app-text) !important; }
+.dark .dark\:text-black { color: var(--app-text) !important; }
+.dark .dark\:border-white { border-color: var(--brand-border) !important; }
+.dark .dark\:border-gray-200 { border-color: var(--brand-border) !important; }
+.dark .dark\:border-gray-300 { border-color: var(--brand-border) !important; }
+.dark .dark\:bg-gray-50 { background-color: var(--brand-surface) !important; }
+.dark .dark\:bg-gray-100 { background-color: var(--brand-surface) !important; }
+.dark .dark\:bg-gray-200 { background-color: var(--brand-border-light) !important; }
+.dark .dark\:bg-gray-300 { background-color: var(--brand-border) !important; }
+.dark .dark\:bg-gray-400 { background-color: var(--brand-muted) !important; }
+.dark .dark\:bg-gray-500 { background-color: var(--brand-mid) !important; }
+.dark .dark\:bg-gray-600 { background-color: var(--brand-dark) !important; }
+.dark .dark\:bg-gray-700 { background-color: var(--brand-black) !important; }
+.dark .dark\:bg-gray-800 { background-color: var(--app-text) !important; }
+.dark .dark\:bg-gray-900 { background-color: var(--app-text) !important; }
+.dark .dark\:text-gray-100 { color: var(--brand-border-light) !important; }
+.dark .dark\:text-gray-200 { color: var(--brand-border) !important; }
+.dark .dark\:text-gray-300 { color: var(--brand-muted) !important; }
+.dark .dark\:text-gray-400 { color: var(--brand-mid) !important; }
+.dark .dark\:text-gray-500 { color: var(--brand-mid) !important; }
+.dark .dark\:text-gray-600 { color: var(--brand-dark) !important; }
+.dark .dark\:text-gray-700 { color: var(--app-text-secondary) !important; }
+.dark .dark\:text-gray-800 { color: var(--app-text) !important; }
+.dark .dark\:text-gray-900 { color: var(--app-text) !important; }
+.dark .dark\:border-gray-100 { border-color: var(--brand-border-light) !important; }
+.dark .dark\:border-gray-200 { border-color: var(--brand-border) !important; }
+.dark .dark\:border-gray-300 { border-color: var(--brand-border) !important; }
+.dark .dark\:border-gray-400 { border-color: var(--brand-muted) !important; }
+.dark .dark\:border-gray-500 { border-color: var(--brand-mid) !important; }
+.dark .dark\:border-gray-600 { border-color: var(--brand-dark) !important; }
+.dark .dark\:border-gray-700 { border-color: var(--app-text-secondary) !important; }
+.dark .dark\:border-gray-800 { border-color: var(--app-text) !important; }
+.dark .dark\:border-gray-900 { border-color: var(--app-text) !important; }
+.dark .dark\:bg-red-50 { background-color: var(--color-red-bg) !important; }
+.dark .dark\:text-red-600 { color: #F87171 !important; }
+.dark .dark\:bg-green-50 { background-color: var(--color-green-bg) !important; }
+.dark .dark\:text-green-600 { color: #34D399 !important; }
+.dark .dark\:bg-amber-50 { background-color: var(--color-amber-bg) !important; }
+.dark .dark\:text-amber-600 { color: #FBBF24 !important; }
+.dark .dark\:bg-blue-50 { background-color: var(--color-blue-bg) !important; }
+.dark .dark\:text-blue-600 { color: #60A5FA !important; }
+
+/* ── Status colour overrides (dark mode) ─────────────────────────── */
+/* These are hardcoded in tailwind.config.js and do NOT auto-adapt    */
+
+/* text-status-*  → brighter variants for dark readability */
+.dark .text-status-green,
+.dark .hover\:text-status-green:hover,
+.dark .focus\:text-status-green:focus { color: #34D399 !important; }
+
+.dark .text-status-amber,
+.dark .hover\:text-status-amber:hover,
+.dark .focus\:text-status-amber:focus { color: #FBBF24 !important; }
+
+.dark .text-status-amberDark,
+.dark .hover\:text-status-amberDark:hover,
+.dark .focus\:text-status-amberDark:focus { color: #F59E0B !important; }
+
+.dark .text-status-blue,
+.dark .hover\:text-status-blue:hover,
+.dark .focus\:text-status-blue:focus { color: #60A5FA !important; }
+
+.dark .text-status-red,
+.dark .hover\:text-status-red:hover,
+.dark .focus\:text-status-red:focus { color: #F87171 !important; }
+
+.dark .text-status-error,
+.dark .hover\:text-status-error:hover,
+.dark .focus\:text-status-error:focus { color: #F87171 !important; }
+
+.dark .text-status-success,
+.dark .hover\:text-status-success:hover,
+.dark .focus\:text-status-success:focus { color: #34D399 !important; }
+
+/* bg-status-* backgrounds → dark muted variants */
+.dark .bg-status-greenBg,
+.dark .hover\:bg-status-greenBg:hover,
+.dark .focus\:bg-status-greenBg:focus { background-color: #0a2f1f !important; }
+
+.dark .bg-status-amberBg,
+.dark .hover\:bg-status-amberBg:hover,
+.dark .focus\:bg-status-amberBg:focus { background-color: #3d2a0a !important; }
+
+.dark .bg-status-amberMid,
+.dark .hover\:bg-status-amberMid:hover,
+.dark .focus\:bg-status-amberMid:focus { background-color: #3d2a0a !important; }
+
+.dark .bg-status-blueBg,
+.dark .hover\:bg-status-blueBg:hover,
+.dark .focus\:bg-status-blueBg:focus { background-color: #0a1f3d !important; }
+
+.dark .bg-status-redBg,
+.dark .hover\:bg-status-redBg:hover,
+.dark .focus\:bg-status-redBg:focus { background-color: #3d0a0a !important; }
+
+.dark .bg-status-red,
+.dark .hover\:bg-status-red:hover,
+.dark .focus\:bg-status-red:focus { background-color: #3d0a0a !important; }
+
+.dark .bg-status-green,
+.dark .hover\:bg-status-green:hover,
+.dark .focus\:bg-status-green:focus { background-color: #0a2f1f !important; }
+
+.dark .bg-status-amber,
+.dark .hover\:bg-status-amber:hover,
+.dark .focus\:bg-status-amber:focus { background-color: #3d2a0a !important; }
+
+.dark .bg-status-warning,
+.dark .hover\:bg-status-warning:hover,
+.dark .focus\:bg-status-warning:focus { background-color: #3d2a0a !important; }
+
+.dark .bg-status-blue,
+.dark .hover\:bg-status-blue:hover,
+.dark .focus\:bg-status-blue:focus { background-color: #0a1f3d !important; }
+
+/* ── Tailwind built-in amber/red/blue/green overrides (dark mode) ─ */
+
+.dark .text-amber-600,
+.dark .hover\:text-amber-600:hover,
+.dark .focus\:text-amber-600:focus { color: #FBBF24 !important; }
+
+.dark .text-amber-700,
+.dark .hover\:text-amber-700:hover,
+.dark .focus\:text-amber-700:focus { color: #F59E0B !important; }
+
+.dark .text-amber-800,
+.dark .hover\:text-amber-800:hover,
+.dark .focus\:text-amber-800:focus { color: #D97706 !important; }
+
+.dark .bg-amber-800,
+.dark .hover\:bg-amber-800:hover,
+.dark .focus\:bg-amber-800:focus { background-color: #3d2a0a !important; }
+
+.dark .bg-amber-700,
+.dark .hover\:bg-amber-700:hover,
+.dark .focus\:bg-amber-700:focus { background-color: #3d2a0a !important; }
+
+.dark .bg-amber-500,
+.dark .hover\:bg-amber-500:hover,
+.dark .focus\:bg-amber-500:focus { background-color: #92400E !important; }
+
+.dark .bg-blue-500,
+.dark .hover\:bg-blue-500:hover,
+.dark .focus\:bg-blue-500:focus { background-color: #1E3A8A !important; }
+
+.dark .bg-blue-600,
+.dark .hover\:bg-blue-600:hover,
+.dark .focus\:bg-blue-600:focus { background-color: #1E40AF !important; }
+
+.dark .border-amber-200,
+.dark .hover\:border-amber-200:hover,
+.dark .focus\:border-amber-200:focus { border-color: #451A03 !important; }
+
+.dark .border-amber-300,
+.dark .hover\:border-amber-300:hover,
+.dark .focus\:border-amber-300:focus { border-color: #451A03 !important; }
+
+.dark .border-red-200,
+.dark .hover\:border-red-200:hover,
+.dark .focus\:border-red-200:focus { border-color: #450A0A !important; }
+
+.dark .border-red-300,
+.dark .hover\:border-red-300:hover,
+.dark .focus\:border-red-300:focus { border-color: #450A0A !important; }
+
+.dark .border-blue-200,
+.dark .hover\:border-blue-200:hover,
+.dark .focus\:border-blue-200:focus { border-color: #1E3A8A !important; }
+
+.dark .border-green-200,
+.dark .hover\:border-green-200:hover,
+.dark .focus\:border-green-200:focus { border-color: #064E3B !important; }
+
+.dark .bg-green-100,
+.dark .hover\:bg-green-100:hover,
+.dark .focus\:bg-green-100:focus { background-color: #064E3B !important; }
+
+.dark .bg-green-200,
+.dark .hover\:bg-green-200:hover,
+.dark .focus\:bg-green-200:focus { background-color: #0a2f1f !important; }
+
+.dark .bg-red-100,
+.dark .hover\:bg-red-100:hover,
+.dark .focus\:bg-red-100:focus { background-color: #450A0A !important; }
+
+.dark .bg-blue-100,
+.dark .hover\:bg-blue-100:hover,
+.dark .focus\:bg-blue-100:focus { background-color: #1E3A8A !important; }
+
+.dark .bg-amber-100,
+.dark .hover\:bg-amber-100:hover,
+.dark .focus\:bg-amber-100:focus { background-color: #451A03 !important; }
+
+.dark .dark\:text-status-green { color: #34D399 !important; }
+.dark .dark\:text-status-amber { color: #FBBF24 !important; }
+.dark .dark\:text-status-amberDark { color: #F59E0B !important; }
+.dark .dark\:text-status-blue { color: #60A5FA !important; }
+.dark .dark\:text-status-red { color: #F87171 !important; }
+.dark .dark\:text-status-error { color: #F87171 !important; }
+.dark .dark\:text-status-success { color: #34D399 !important; }
+.dark .dark\:bg-status-amberBg { background-color: #3d2a0a !important; }
+.dark .dark\:bg-status-amberMid { background-color: #3d2a0a !important; }
+.dark .dark\:bg-status-blueBg { background-color: #0a1f3d !important; }
+.dark .dark\:bg-status-greenBg { background-color: #0a2f1f !important; }
+.dark .dark\:bg-status-redBg { background-color: #3d0a0a !important; }
+.dark .dark\:border-amber-200 { border-color: #451A03 !important; }
+.dark .dark\:border-red-200 { border-color: #450A0A !important; }
+.dark .dark\:border-blue-200 { border-color: #1E3A8A !important; }
+.dark .dark\:bg-amber-800 { background-color: #3d2a0a !important; }
+.dark .dark\:bg-blue-500 { background-color: #1E3A8A !important; }
+.dark .dark\:text-amber-600 { color: #FBBF24 !important; }
+
+/* Map fallback grid — dark mode */
+.map-fallback-grid {
+  background-image: radial-gradient(circle, #E5E7EB 1px, transparent 1px);
 }
-.dark .text-gray-500 {
-  color: var(--brand-mid);
+.dark .map-fallback-grid {
+  background-image: radial-gradient(circle, #333333 1px, transparent 1px) !important;
 }
+
+/* Ensure text-white stays white in dark mode (for overlays on dark media) */
+.dark .text-white,
+.dark .hover\:text-white:hover,
+.dark .focus\:text-white:focus { color: #ffffff !important; }
+
+/* Ensure bg-white uses app-shell-bg in dark mode for certain contexts */
+.dark .bg-white.rounded-t-2xl,
+.dark .bg-white.rounded-t-xl,
+.dark .bg-white.rounded-lg {
+  background-color: var(--app-shell-bg) !important;
+}
+
+/* Dark mode for BottomSheet overlay - darker in dark mode */
+.dark [data-state="open"] .bg-black\/25,
+.dark .bg-black\/25,
+.dark .bg-black\/20 {
+  background-color: rgba(0,0,0,0.65) !important;
+}
+
+/* Ensure border-brand-borderLight adapts in dark mode */
+.dark .border-brand-borderLight,
+.dark .hover\:border-brand-borderLight:hover { border-color: var(--brand-border-light) !important; }
+.dark .border-brand-border,
+.dark .hover\:border-brand-border:hover { border-color: var(--brand-border) !important; }
+
+/* Dark mode for bg-brand-surface (cards, sections) */
+.dark .bg-brand-surface,
+.dark .hover\:bg-brand-surface:hover { background-color: var(--brand-surface) !important; }
+.dark .bg-brand-surfaceCard,
+.dark .hover\:bg-brand-surfaceCard:hover { background-color: var(--brand-surface-card) !important; }
+.dark .bg-brand-darkBg,
+.dark .hover\:bg-brand-darkBg:hover { background-color: var(--brand-dark-bg) !important; }
+
+/* Dark mode text-brand-muted and text-brand-mid */
+.dark .text-brand-muted,
+.dark .hover\:text-brand-muted:hover { color: var(--brand-muted) !important; }
+.dark .text-brand-mid,
+.dark .hover\:text-brand-mid:hover { color: var(--brand-mid) !important; }
+.dark .text-brand-dark,
+.dark .hover\:text-brand-dark:hover { color: var(--app-text-secondary) !important; }
+.dark .text-brand-black,
+.dark .hover\:text-brand-black:hover { color: var(--app-text) !important; }
+
+/* Dark mode for divide utilities */
+.dark .divide-brand-surface > * + * { border-color: var(--brand-surface) !important; }
+.dark .divide-brand-borderLight > * + * { border-color: var(--brand-border-light) !important; }
+.dark .divide-gray-100 > * + * { border-color: var(--brand-border-light) !important; }
+.dark .divide-gray-200 > * + * { border-color: var(--brand-border) !important; }
+
+/* Dark mode for shadow utilities */
+.dark .shadow-sheet { box-shadow: 0 -4px 12px rgba(0,0,0,0.60) !important; }
+.dark .shadow-card { box-shadow: 0 1px 2px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.25) !important; }
+.dark .shadow-seg { box-shadow: 0 1px 3px rgba(0,0,0,0.50) !important; }
+
+/* Dark mode for bg-transparent — ensure it stays transparent */
+.dark .bg-transparent { background-color: transparent !important; }
+
+/* Dark mode for brand-border-based borders */
+.dark .border-\[var\(--brand-border\)\] { border-color: var(--brand-border) !important; }
+.dark .border-\[var\(--brand-borderLight\)\] { border-color: var(--brand-border-light) !important; }
+
+/* Dark mode for any bg-white with border-radius (common card pattern) */
+.dark .bg-white.rounded-xl,
+.dark .bg-white.rounded-2xl,
+.dark .bg-white.rounded-lg,
+.dark .bg-white.rounded-md,
+.dark .bg-white.rounded-sm {
+  background-color: var(--brand-surface) !important;
+}
+
+/* Dark mode for absolute overlays on bg-white */
+.dark .bg-white .bg-black\/25,
+.dark .bg-white .bg-black\/20,
+.dark .bg-white .bg-black\/30 {
+  background-color: rgba(0,0,0,0.65) !important;
+}
+
+/* ── Dark mode: missing sky-* overrides ── */
+.dark .bg-sky-50,
+.dark .hover\:bg-sky-50:hover,
+.dark .focus\:bg-sky-50:focus { background-color: #0a1f3d !important; }
+.dark .border-sky-200,
+.dark .hover\:border-sky-200:hover,
+.dark .focus\:border-sky-200:focus { border-color: #1E3A8A !important; }
+.dark .text-sky-700,
+.dark .hover\:text-sky-700:hover,
+.dark .focus\:text-sky-700:focus { color: #60A5FA !important; }
+
+/* ── Dark mode: missing purple-* overrides ── */
+.dark .bg-purple-50,
+.dark .hover\:bg-purple-50:hover,
+.dark .focus\:bg-purple-50:focus { background-color: #1a0a3d !important; }
+.dark .bg-purple-500,
+.dark .hover\:bg-purple-500:hover,
+.dark .focus\:bg-purple-500:focus { background-color: #7C3AED !important; }
+.dark .bg-purple-600,
+.dark .hover\:bg-purple-600:hover,
+.dark .focus\:bg-purple-600:focus { background-color: #6D28D9 !important; }
+.dark .text-purple-700,
+.dark .hover\:text-purple-700:hover,
+.dark .focus\:text-purple-700:focus { color: #A78BFA !important; }
+.dark .border-purple-200,
+.dark .hover\:border-purple-200:hover,
+.dark .focus\:border-purple-200:focus { border-color: #4C1D95 !important; }
+
+/* ── Dark mode: missing slate-* overrides ── */
+.dark .bg-slate-50,
+.dark .hover\:bg-slate-50:hover,
+.dark .focus\:bg-slate-50:focus { background-color: var(--brand-surface) !important; }
+.dark .bg-slate-100,
+.dark .hover\:bg-slate-100:hover,
+.dark .focus\:bg-slate-100:focus { background-color: var(--brand-surface) !important; }
+.dark .bg-slate-200,
+.dark .hover\:bg-slate-200:hover,
+.dark .focus\:bg-slate-200:focus { background-color: var(--brand-border-light) !important; }
+.dark .text-slate-500,
+.dark .hover\:text-slate-500:hover,
+.dark .focus\:text-slate-500:focus { color: var(--brand-muted) !important; }
+.dark .text-slate-600,
+.dark .hover\:text-slate-600:hover,
+.dark .focus\:text-slate-600:focus { color: var(--brand-mid) !important; }
+.dark .text-slate-700,
+.dark .hover\:text-slate-700:hover,
+.dark .focus\:text-slate-700:focus { color: var(--brand-dark) !important; }
+.dark .text-slate-900,
+.dark .hover\:text-slate-900:hover,
+.dark .focus\:text-slate-900:focus { color: var(--app-text) !important; }
+.dark .border-slate-200,
+.dark .hover\:border-slate-200:hover,
+.dark .focus\:border-slate-200:focus { border-color: var(--brand-border-light) !important; }
+.dark .border-slate-300,
+.dark .hover\:border-slate-300:hover,
+.dark .focus\:border-slate-300:focus { border-color: var(--brand-border) !important; }
+
+/* Missing bg-emerald-600 and bg-orange-500 dark overrides */
+.dark .bg-emerald-600,
+.dark .hover\:bg-emerald-600:hover,
+.dark .focus\:bg-emerald-600:focus { background-color: #059669 !important; }
+.dark .bg-orange-500,
+.dark .hover\:bg-orange-500:hover,
+.dark .focus\:bg-orange-500:focus { background-color: #c2410c !important; }

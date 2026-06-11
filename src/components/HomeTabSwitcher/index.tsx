@@ -1,4 +1,6 @@
-import React from 'react';
+import React, { useRef, useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
+import { haptic } from '../../lib/haptics';
 
 export interface HomeTabSwitcherProps {
   activeTab: 'today' | 'tasks';
@@ -13,14 +15,30 @@ export const HomeTabSwitcher: React.FC<HomeTabSwitcherProps> = ({
   tasksBadgeCount,
   onChange,
 }) => {
+  const todayRef = useRef<HTMLButtonElement>(null);
+  const tasksRef = useRef<HTMLButtonElement>(null);
+  const [underline, setUnderline] = useState({ left: 0, width: 0 });
+
+  // Measure active tab position for animated underline
+  useEffect(() => {
+    const ref = activeTab === 'today' ? todayRef.current : tasksRef.current;
+    if (ref) {
+      setUnderline({
+        left: ref.offsetLeft,
+        width: ref.offsetWidth,
+      });
+    }
+  }, [activeTab]);
+
   return (
-    <div className="flex border-b border-brand-borderLight mx-4 mt-2 shrink-0">
+    <div className="flex border-b border-brand-borderLight mx-4 mt-2 shrink-0 relative">
       <button
-        onClick={() => onChange('today')}
-        className={`flex-1 h-11 flex items-center justify-center text-xs font-medium cursor-pointer transition-all gap-1.5 border-b-2 ${
+        ref={todayRef}
+        onClick={() => { haptic('light'); onChange('today'); }}
+        className={`flex items-center h-11 text-xs font-medium cursor-pointer transition-all duration-150 gap-1.5 pr-4 active:opacity-70 ${
           activeTab === 'today'
-            ? 'text-brand-black font-bold border-brand-black'
-            : 'text-brand-muted border-transparent'
+            ? 'text-brand-black font-bold'
+            : 'text-brand-muted'
         }`}
       >
         Today
@@ -31,11 +49,12 @@ export const HomeTabSwitcher: React.FC<HomeTabSwitcherProps> = ({
         )}
       </button>
       <button
-        onClick={() => onChange('tasks')}
-        className={`flex-1 h-11 flex items-center justify-center text-xs font-medium cursor-pointer transition-all gap-1.5 border-b-2 ${
+        ref={tasksRef}
+        onClick={() => { haptic('light'); onChange('tasks'); }}
+        className={`flex items-center h-11 text-xs font-medium cursor-pointer transition-all duration-150 gap-1.5 pl-4 active:opacity-70 ${
           activeTab === 'tasks'
-            ? 'text-brand-black font-bold border-brand-black'
-            : 'text-brand-muted border-transparent'
+            ? 'text-brand-black font-bold'
+            : 'text-brand-muted'
         }`}
       >
         Tasks
@@ -45,6 +64,16 @@ export const HomeTabSwitcher: React.FC<HomeTabSwitcherProps> = ({
           </span>
         )}
       </button>
+
+      {/* Animated underline */}
+      <motion.div
+        className="absolute bottom-0 h-0.5 bg-brand-black rounded-full"
+        animate={{
+          left: underline.left,
+          width: underline.width,
+        }}
+        transition={{ type: 'spring', stiffness: 400, damping: 35, duration: 0.2 }}
+      />
     </div>
   );
 };

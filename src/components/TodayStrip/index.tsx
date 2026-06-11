@@ -17,7 +17,7 @@ export const TodayStrip: React.FC<TodayStripProps> = ({ jobs, onTap }) => {
       onClick={onTap}
       className="h-11 bg-brand-surface border border-brand-border rounded-lg flex items-center px-3 cursor-pointer"
     >
-      <span className="text-xs text-brand-dark truncate flex-1">
+      <span className="text-sm text-brand-dark truncate flex-1">
         {first.time} · {first.customerName} · {first.jobTitle}
       </span>
       {remaining > 0 && (

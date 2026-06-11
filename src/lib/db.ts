@@ -73,7 +73,7 @@ export interface LineItem {
   _sync_status: SyncStatus;
 }
 
-export type WorkLogType = 'note' | 'charge' | 'status_change' | 'customer_notified' | 'running_late';
+export type WorkLogType = 'note' | 'charge' | 'status_change' | 'customer_notified' | 'running_late' | 'quote_sent';
 
 export interface WorkLogEntry {
   id: string;
@@ -108,6 +108,47 @@ export interface SyncQueueItem {
   retry_count: number;
 }
 
+/* ─── R3: Photo Capture ─── */
+export interface JobPhoto {
+  id: string;
+  job_id: string;
+  user_id: string;
+  data_url: string;
+  caption?: string;
+  taken_at: string;
+  created_at: string;
+  _sync_status: SyncStatus;
+}
+
+/* ─── R5: Custom Item Library ─── */
+export interface CustomItem {
+  id: string;
+  user_id: string;
+  description: string;
+  amount: number;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+  _sync_status: SyncStatus;
+}
+
+/* ─── R19: Materials Inventory ─── */
+export interface MaterialItem {
+  id: string;
+  job_id: string;
+  user_id: string;
+  description: string;
+  quantity: number;
+  unit_cost: number;
+  markup_pct: number;
+  unit_price: number;
+  total_cost: number;
+  total_price: number;
+  added_on_site: boolean;
+  created_at: string;
+  _sync_status: SyncStatus;
+}
+
 class TradePadDB extends Dexie {
   profiles!: Table<Profile>;
   customers!: Table<Customer>;
@@ -116,6 +157,9 @@ class TradePadDB extends Dexie {
   work_log!: Table<WorkLogEntry>;
   payments!: Table<Payment>;
   sync_queue!: Table<SyncQueueItem>;
+  job_photos!: Table<JobPhoto>;
+  custom_items!: Table<CustomItem>;
+  material_items!: Table<MaterialItem>;
 
   constructor() {
     super('TradePadDB');
@@ -127,6 +171,11 @@ class TradePadDB extends Dexie {
       work_log:    'id, job_id, created_at, _sync_status',
       payments:    'id, job_id, _sync_status',
       sync_queue:  '++id, table_name, record_id, created_at'
+    });
+    this.version(2).stores({
+      job_photos:    'id, job_id, user_id, created_at, _sync_status',
+      custom_items:  'id, user_id, sort_order, [user_id+sort_order]',
+      material_items:'id, job_id, user_id, created_at, _sync_status',
     });
   }
 }

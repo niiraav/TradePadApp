@@ -1,13 +1,12 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Check, MessageCircle, Banknote, CreditCard, AlertTriangle, ChevronRight } from 'lucide-react';
+import { Check, MessageCircle, Banknote, CreditCard, AlertTriangle, Clock, Calendar, CheckCircle } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { db, type Job, type Customer, type LineItem, type WorkLogEntry, type Profile } from '../../lib/db';
 import { HomeTabSwitcher } from '../../components/HomeTabSwitcher';
 import { JobCard } from '../../components/JobCard';
 import { ActiveBar } from '../../components/ActiveBar';
 import { TodayStrip } from '../../components/TodayStrip';
-import { TabBar } from '../../components/TabBar';
 import SyncIndicator from '../../components/SyncIndicator';
 import { BottomSheet, SheetRow } from '../../components/BottomSheet';
 import { Button } from '../../components/Button';
@@ -75,7 +74,7 @@ type SheetState =
   | 'not_home'
   | 'dismiss_confirm';
 
-type TaskType = 'overdue' | 'chase' | 'missed_call' | 'no_show' | 'stale_quote' | 'urgent_new';
+type TaskType = 'overdue' | 'chase' | 'missed_call' | 'no_show' | 'stale_quote' | 'urgent_new' | 'draft_quote';
 
 interface TaskItem {
   id: string;
@@ -90,6 +89,8 @@ interface TaskItem {
   callTime?: string;
   flag?: 'urgent_new' | 'overdue' | 'chase' | 'stale' | 'no_show';
   flagDays?: number;
+  timeAgo: string;
+  contextLine: string;
 }
 
 /* --- component --- */
@@ -203,12 +204,6 @@ export default function Home() {
     return Math.floor((Date.now() - new Date(activeJob.actual_start).getTime()) / 1000);
   }, [activeJob, tick]);
 
-  const activeDayNumber = useMemo(() => {
-    if (!activeJob?.actual_start || !activeJob.is_multi_day) return undefined;
-    const start = new Date(activeJob.actual_start);
-    const diff = Math.floor((Date.now() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-    return diff;
-  }, [activeJob, tick]);
 
   const totalOwed = useMemo(() => {
     let owed = 0;
@@ -232,6 +227,7 @@ export default function Home() {
 
       // L2: Can't ignore
       if (j.status === 'no_show') {
+        const noShowAge = j.actual_end ? Math.floor((Date.now() - new Date(j.actual_end).getTime()) / (1000 * 60)) : 0;
         items.push({
           id: `no_show_${j.id}`,
           jobId: j.id,
@@ -243,10 +239,13 @@ export default function Home() {
             : '',
           isL2: true,
           type: 'no_show',
+          timeAgo: timeAgo(noShowAge),
+          contextLine: j.scheduled_start ? `Was scheduled for ${timeAgo(noShowAge)}` : 'No-show logged',
         });
       }
 
       if (j.status === 'awaiting_payment' && j.invoice_sent_at && daysSince(j.invoice_sent_at) >= 30) {
+        const overdueAge = daysSince(j.invoice_sent_at);
         items.push({
           id: `overdue_${j.id}`,
           jobId: j.id,
@@ -257,17 +256,18 @@ export default function Home() {
           isL2: true,
           type: 'overdue',
           flag: 'overdue',
-          flagDays: daysSince(j.invoice_sent_at),
+          flagDays: overdueAge,
+          timeAgo: `${overdueAge}d overdue`,
+          contextLine: `£${formatAmount(total)} · ${overdueAge}d overdue`,
         });
       }
 
       if (j.status === 'enquiry' && j.created_at) {
         const ageMs = Date.now() - new Date(j.created_at).getTime();
         const ageMinutes = Math.floor(ageMs / (1000 * 60));
+        const hasLineItems = (lineItems[j.id] || []).length > 0;
 
         if (j.title === 'Missed call') {
-          // Missed calls go to L3 per SCREEN-SPECS.md
-          const isUrgent = ageMs < 2 * 60 * 60 * 1000;
           items.push({
             id: `missed_${j.id}`,
             jobId: j.id,
@@ -279,20 +279,36 @@ export default function Home() {
             type: 'missed_call',
             phone: c.phone,
             callTime: timeAgo(ageMinutes),
-            flag: isUrgent ? 'urgent_new' : undefined,
+            timeAgo: timeAgo(ageMinutes),
+            contextLine: c.phone || 'Unknown number',
+          });
+        } else if (hasLineItems) {
+          // Draft quote: has line items, not a missed call
+          items.push({
+            id: `draft_${j.id}`,
+            jobId: j.id,
+            customerName: c.name,
+            jobTitle: j.title,
+            tag: 'Draft',
+            amount: `£${formatAmount(total)}`,
+            isL2: false,
+            type: 'draft_quote',
+            timeAgo: timeAgo(ageMinutes),
+            contextLine: `£${formatAmount(total)} · saved ${timeAgo(ageMinutes)}`,
           });
         } else if (ageMs < 2 * 60 * 60 * 1000) {
-          // Urgent new enquiries (not missed calls) go to L2
+          // Urgent new enquiries (not missed calls, no line items, < 2 hours)
           items.push({
             id: `urgent_${j.id}`,
             jobId: j.id,
             customerName: c.name,
             jobTitle: j.title,
             tag: 'New',
-            amount: `£${formatAmount(total)}`,
-            isL2: true,
+            amount: '',
+            isL2: false,
             type: 'urgent_new',
-            flag: 'urgent_new',
+            timeAgo: timeAgo(ageMinutes),
+            contextLine: `${timeAgo(ageMinutes)} · needs follow-up`,
           });
         }
       }
@@ -312,6 +328,8 @@ export default function Home() {
             type: 'chase',
             flag: 'chase',
             flagDays: days,
+            timeAgo: `${days}d since invoice`,
+            contextLine: `£${formatAmount(total)} · ${days}d since invoice`,
           });
         }
       }
@@ -329,6 +347,8 @@ export default function Home() {
           type: 'stale_quote',
           flag: 'stale',
           flagDays: days,
+          timeAgo: `${days}d since quote`,
+          contextLine: `£${formatAmount(total)} · ${days}d since quote · no reply yet`,
         });
       }
     });
@@ -336,11 +356,9 @@ export default function Home() {
     return items;
   }, [jobs, customers, lineItems, userId, tick]);
 
-  const l2Tasks = tasks.filter((t) => t.isL2);
-  const l3Tasks = tasks.filter((t) => !t.isL2);
-  const missedCallTasks = tasks.filter((t) => t.type === 'missed_call');
-  const l3ListTasks = l3Tasks.filter((t) => t.type !== 'missed_call');
-  const l2Count = l2Tasks.length;
+  const actTodayTasks = tasks.filter((t) => t.type === 'missed_call' || t.type === 'overdue');
+  const followUpTasks = tasks.filter((t) => t.type !== 'missed_call' && t.type !== 'overdue');
+  const l2Count = actTodayTasks.length;
 
   /* --- helpers --- */
   const customerFor = (jobId: string) => {
@@ -433,34 +451,6 @@ export default function Home() {
     refresh();
   };
 
-  const handleNotHome = async () => {
-    if (!nextUpJob || !userId) return;
-    const n = now();
-    await db.jobs.update(nextUpJob.id, {
-      status: 'no_show',
-      actual_end: n,
-      updated_at: n,
-      _sync_status: 'pending',
-    });
-    await db.work_log.add({
-      id: crypto.randomUUID(),
-      job_id: nextUpJob.id,
-      type: 'status_change',
-      description: 'Customer not home — no-show logged',
-      created_at: n,
-      _sync_status: 'pending',
-    });
-    await db.sync_queue.add({
-      operation: 'update',
-      table_name: 'jobs',
-      record_id: nextUpJob.id,
-      payload: { status: 'no_show', actual_end: n, updated_at: n },
-      created_at: n,
-      retry_count: 0,
-    });
-    setSheet(null);
-    refresh();
-  };
 
   const handleDone = () => {
     if (!activeJob) return;
@@ -530,11 +520,6 @@ export default function Home() {
     refresh();
   };
 
-  const handleNavigate = (tab: 'home' | 'jobs' | 'activity' | 'settings') => {
-    if (tab === 'home') return;
-    navigate('/' + tab);
-  };
-
   /* --- render helpers --- */
 
   const renderNextUpCard = () => {
@@ -549,23 +534,20 @@ export default function Home() {
     const showNotify = wasNotified || lastNotify;
 
     return (
-      <div className="px-4 mt-3">
+      <div className="mt-3">
         <JobCard
           job={nextUpJob}
           customer={c}
           lineItemsTotal={total}
           isNextUp={true}
-          showAddress={false}
-          showNotHome={true}
           onRunningLate={handleRunningLate}
           onImHere={handleImHere}
-          onNotHome={handleNotHome}
           onBodyTap={() => navigate(`/jobs/${nextUpJob.id}`)}
         />
         {showNotify && (
           <div className="mt-2 flex items-center gap-1.5">
             <Check size={12} strokeWidth={2.5} className="text-status-green" />
-            <span className="text-xs text-status-green">
+            <span className="text-sm text-status-green">
               Customer notified · {lastNotify?.description.split(' · ')[1] || 'just now'}
             </span>
           </div>
@@ -583,7 +565,6 @@ export default function Home() {
         customer={c}
         job={activeJob}
         elapsedSeconds={activeElapsed}
-        dayNumber={activeDayNumber}
         onTap={() => navigate(`/jobs/${activeJob.id}`)}
         onDone={handleDone}
       />
@@ -591,7 +572,14 @@ export default function Home() {
   };
 
   const renderRemainingStrip = () => {
-    if (remainingTodayJobs.length === 0) return null;
+    if (remainingTodayJobs.length === 0) {
+      return (
+        <div className="mt-6 flex items-center justify-center gap-2 text-brand-muted">
+          <Clock size={16} className="text-brand-muted" />
+          <span className="text-sm text-brand-muted">Nothing else booked today</span>
+        </div>
+      );
+    }
     const stripJobs = remainingTodayJobs.map((j) => {
       const c = customerFor(j.id);
       return {
@@ -607,7 +595,7 @@ export default function Home() {
       };
     });
     return (
-      <div className="px-4 mt-3">
+      <div className="mt-3">
         <TodayStrip jobs={stripJobs} onTap={() => navigate('/jobs')} />
       </div>
     );
@@ -619,12 +607,11 @@ export default function Home() {
     const c = customerFor(nextUpJob.id);
     if (!c) return null;
     return (
-      <div className="px-4 mt-3">
+      <div className="mt-3">
         <JobCard
           job={nextUpJob}
           customer={c}
           lineItemsTotal={totalFor(nextUpJob.id)}
-          showAddress={false}
           onBodyTap={() => navigate(`/jobs/${nextUpJob.id}`)}
         />
       </div>
@@ -634,8 +621,9 @@ export default function Home() {
   const renderNoJobsToday = () => (
     <div className="px-4 mt-6">
       <div className="border border-dashed border-brand-border rounded-lg p-8 text-center">
-        <p className="text-base font-semibold text-brand-black">No jobs today</p>
-        <p className="text-xs text-brand-muted mt-1.5">
+        <div className="w-14 h-14 rounded-full bg-brand-borderLight flex items-center justify-center mb-3 mx-auto"><Calendar size={24} className="text-brand-muted" /></div>
+          <p className="text-base font-semibold text-brand-black">No jobs today</p>
+        <p className="text-sm text-brand-muted mt-1.5">
           {formatShortDate(today)} · Free day
         </p>
         <div className="flex gap-2 mt-5">
@@ -658,7 +646,7 @@ export default function Home() {
     <div className="px-4 mt-6">
       <div className="border border-dashed border-brand-border rounded-lg p-8 text-center">
         <p className="text-base font-semibold text-brand-black">All clear</p>
-        <p className="text-xs text-brand-muted mt-1.5">
+        <p className="text-sm text-brand-muted mt-1.5">
           Nothing needs your attention today
         </p>
         <div className="flex gap-2 mt-5">
@@ -679,132 +667,61 @@ export default function Home() {
 
   const renderTasks = () => {
     return (
-      <div className="flex-1 pt-4 pb-4 overflow-y-auto">
-        {/* L2 list rows */}
-        {l2Tasks.length > 0 && (
+      <div className="flex-1 pt-4 pb-4 overflow-y-auto px-4">
+        {/* ACT TODAY: Missed calls + overdue payments */}
+        {actTodayTasks.length > 0 && (
           <>
-            <div className="flex items-center justify-between mb-2 px-4">
-              <span className="text-micro font-bold text-brand-mid uppercase tracking-[0.7px]">
-                Can't ignore
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-micro font-bold text-brand-mid tracking-[0.7px]">
+                Act today
               </span>
             </div>
-            <div className="border border-brand-border rounded-lg overflow-hidden mb-5">
-              {l2Tasks.map((task) => (
-                <div
-                  key={task.id}
-                  onClick={() => navigate(`/jobs/${task.jobId}`)}
-                  className="flex items-center px-4 py-3 gap-2.5 border-b border-brand-borderLight cursor-pointer min-h-14 last:border-b-0"
-                >
-                  <span className={`
-                    text-micro font-bold uppercase tracking-wide whitespace-nowrap shrink-0
-                    inline-flex items-center gap-1.5 px-2 py-1 rounded-full
-                    ${task.type === 'no_show' ? 'bg-status-amberMid text-status-amberDark' :
-                      task.type === 'overdue' ? 'bg-status-amberBg text-status-amber' :
-                      task.type === 'urgent_new' ? 'bg-status-blueBg text-status-blue' :
-                      'bg-brand-borderLight text-brand-black'}
-                  `}>
-                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                      task.type === 'no_show' ? 'bg-orange-500' :
-                      task.type === 'overdue' ? 'bg-status-warning' :
-                      task.type === 'urgent_new' ? 'bg-blue-500' :
-                      'bg-brand-muted'
-                    }`} />
-                    {task.tag}
-                  </span>
-                  <span className="text-sm font-semibold text-brand-black flex-1 min-w-0 truncate">
-                    {task.customerName} · {task.jobTitle}
-                  </span>
-                  <span className="text-xs text-brand-mid whitespace-nowrap shrink-0">
-                    {task.amount}
-                  </span>
-                  <ChevronRight size={16} className="text-brand-muted shrink-0" />
-                </div>
-              ))}
+            <div className="flex flex-col gap-3 mb-6">
+              {actTodayTasks.map((task) => {
+                const j = jobs.find(x => x.id === task.jobId);
+                const c = j ? customers[j.customer_id] : undefined;
+
+                return (
+                  <TaskCard
+                    key={task.id}
+                    type={task.type}
+                    job={j}
+                    customer={c}
+                    timeAgo={task.timeAgo}
+                    contextLine={task.contextLine}
+                    onTap={() => navigate(`/jobs/${task.jobId}`)}
+                  />
+                );
+              })}
             </div>
           </>
         )}
 
-        {/* L3: Missed call TaskCards */}
-        {missedCallTasks.length > 0 && (
+        {/* FOLLOW UP: Everything else */}
+        {followUpTasks.length > 0 && (
           <>
-            <div className="flex items-center justify-between mb-2 px-4">
-              <span className="text-micro font-bold text-brand-mid uppercase tracking-[0.7px]">
-                When you get a minute
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-micro font-bold text-brand-mid tracking-[0.7px]">
+                Follow up
               </span>
             </div>
-            <div className="flex flex-col gap-4 mb-5 px-4">
-              {missedCallTasks.map((task) => (
-                <TaskCard
-                  key={task.id}
-                  type="missed_call"
-                  callerPhone={task.phone}
-                  callerName={task.customerName === 'Unknown' ? undefined : task.customerName}
-                  callTime={`Missed call · ${task.callTime || ''}`}
-                  flag={task.flag}
-                  flagDays={task.flagDays}
-                  primaryAction={{
-                    label: 'Call back',
-                    onClick: () => {
-                      if (task.phone) window.open(`tel:${task.phone}`, '_self');
-                    }
-                  }}
-                  secondaryAction={{
-                    label: 'Create quote',
-                    onClick: () => {
-                      const job = jobs.find(j => j.id === task.jobId);
-                      if (job) {
-                        navigate('/quote', { state: { entryPoint: 'task', customerId: job.customer_id } });
-                      }
-                    }
-                  }}
-                  tertiaryAction={{
-                    label: 'Dismiss',
-                    onClick: () => {
-                      setSelectedJobId(task.jobId);
-                      setSheet('dismiss_confirm');
-                    }
-                  }}
-                />
-              ))}
-            </div>
-          </>
-        )}
+            <div className="flex flex-col gap-3 mb-6">
+              {followUpTasks.map((task) => {
+                const j = jobs.find(x => x.id === task.jobId);
+                const c = j ? customers[j.customer_id] : undefined;
 
-        {/* L3 list rows (non-missed-call) */}
-        {l3ListTasks.length > 0 && (
-          <>
-            <div className="flex items-center justify-between mb-2 px-4">
-              <span className="text-micro font-bold text-brand-mid uppercase tracking-[0.7px]">
-                When you get a minute
-              </span>
-              {missedCallTasks.length === 0 && (
-                <button
-                  onClick={() => navigate('/jobs')}
-                  className="text-xxs text-brand-mid cursor-pointer"
-                >
-                  See all
-                </button>
-              )}
-            </div>
-            <div className="border border-brand-border rounded-lg overflow-hidden mb-5">
-              {l3ListTasks.map((task) => (
-                <div
-                  key={task.id}
-                  onClick={() => navigate(`/jobs/${task.jobId}`)}
-                  className="flex items-center px-4 py-2.5 gap-2.5 border-b border-brand-borderLight cursor-pointer min-h-14 last:border-b-0"
-                >
-                  <span className="text-micro font-semibold text-brand-muted bg-brand-surface border border-brand-border px-[7px] py-0.5 rounded-xs uppercase whitespace-nowrap shrink-0">
-                    {task.tag}
-                  </span>
-                  <span className="text-xs font-medium text-brand-dark flex-1 min-w-0 truncate">
-                    {task.customerName} · {task.jobTitle}
-                  </span>
-                  <span className="text-xxs text-brand-muted whitespace-nowrap shrink-0">
-                    {task.amount}
-                  </span>
-                  <ChevronRight size={16} className="text-brand-muted shrink-0" />
-                </div>
-              ))}
+                return (
+                  <TaskCard
+                    key={task.id}
+                    type={task.type}
+                    job={j}
+                    customer={c}
+                    timeAgo={task.timeAgo}
+                    contextLine={task.contextLine}
+                    onTap={() => navigate(`/jobs/${task.jobId}`)}
+                  />
+                );
+              })}
             </div>
           </>
         )}
@@ -813,7 +730,8 @@ export default function Home() {
           <div className="px-4 mt-6">
             <div className="border border-dashed border-brand-border rounded-lg p-8 text-center">
               <p className="text-base font-semibold text-brand-black">All clear</p>
-              <p className="text-xs text-brand-muted mt-1.5">Nothing needs your attention</p>
+              <div className="w-14 h-14 rounded-full bg-brand-borderLight flex items-center justify-center mb-3 mx-auto"><CheckCircle size={24} className="text-brand-muted" /></div>
+            <p className="text-sm text-brand-muted mt-1.5">Nothing needs your attention</p>
               <div className="flex gap-2 mt-5">
                 <div className="flex-1"><Button variant="secondary" onClick={() => navigate('/quote')} fullWidth>+ New Quote</Button></div>
                 <div className="flex-1"><Button variant="secondary" onClick={() => navigate('/quote', { state: { entryPoint: 'missed_call' } })} fullWidth>Log Missed Call</Button></div>
@@ -832,7 +750,7 @@ export default function Home() {
   /* --- main render --- */
   if (loading) {
     return (
-      <div className="flex flex-col min-h-[100svh]">
+      <div className="flex flex-col h-full">
         <div className="flex-1 flex items-center justify-center">
           <div className="w-8 h-8 border-2 border-brand-border border-t-brand-black rounded-full animate-spin" />
         </div>
@@ -841,14 +759,14 @@ export default function Home() {
   }
 
   return (
-    <div className="flex flex-col min-h-[100svh] relative">
+    <div className="flex flex-col h-full relative">
       {/* Header */}
-      <div className="px-4 pt-4 pb-3 flex items-start justify-between border-b border-brand-borderLight">
+      <div className="px-4 pt-4 pb-2 flex items-start justify-between">
         <div>
           <span className="text-lg font-bold text-brand-black block">
             {getGreeting()}, {firstName}
           </span>
-          <span className="text-xxs text-brand-muted block mt-0.5">
+          <span className="text-sm text-brand-muted block mt-0.5">
             {todayLabel} · {subLabel}
           </span>
         </div>
@@ -874,7 +792,7 @@ export default function Home() {
 
       {/* Today tab content */}
       {activeTab === 'today' && (
-        <div className="flex-1 pt-4 pb-4 overflow-y-auto">
+        <div className="flex-1 px-4 pt-4 pb-4 overflow-y-auto">
           {/* Active bar */}
           {(todayState === 'in_progress' || todayState === 'multi_day') && renderActiveBar()}
 
@@ -899,17 +817,14 @@ export default function Home() {
       {activeTab === 'tasks' && renderTasks()}
 
       {/* Footer — only show when active tab has content; otherwise buttons are in empty state cards */}
-      {((activeTab === 'today' && todayState !== 'all_clear') || (activeTab === 'tasks' && tasks.length > 0)) && (
-        <div className="sticky bottom-0 z-30 bg-white border-t border-brand-borderLight shadow-sheet">
+      {activeTab === 'today' && todayState !== 'all_clear' && (
+        <div className="sticky bottom-0 z-30 bg-[var(--app-shell-bg)] border-t border-brand-borderLight shadow-sheet">
           <div className="flex gap-2 px-4 py-2.5 pb-[calc(10px_+_env(safe-area-inset-bottom))]">
             <div className="flex-1"><Button variant="secondary" onClick={() => navigate('/quote')} fullWidth>+ New Quote</Button></div>
             <div className="flex-1"><Button variant="secondary" onClick={() => navigate('/quote', { state: { entryPoint: 'missed_call' } })} fullWidth>Log Missed Call</Button></div>
           </div>
         </div>
       )}
-
-      {/* Tab bar */}
-      <TabBar activeTab="home" onNavigate={handleNavigate} />
 
       {/* --- Bottom Sheet: Running Late --- */}
       <BottomSheet
@@ -921,7 +836,7 @@ export default function Home() {
           <textarea
             value={lateMsg}
             onChange={(e) => setLateMsg(e.target.value)}
-            className="w-full text-xs text-brand-dark italic leading-relaxed bg-transparent border-none outline-none resize-none p-0"
+            className="w-full text-base text-brand-dark italic leading-relaxed bg-transparent border-none outline-none resize-none p-0"
             rows={3}
           />
         </div>

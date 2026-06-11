@@ -23,6 +23,10 @@ export function useTheme() {
       root.classList.remove('dark');
     }
     try {
+      const meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', isDark ? '#111827' : '#FFFFFF');
+    } catch { /* ignore */ }
+    try {
       localStorage.setItem(STORAGE_KEY, String(isDark));
     } catch {
       // ignore storage errors

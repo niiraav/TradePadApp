@@ -1,14 +1,14 @@
 :root {
-  /* ── Brand colours (light) ─────────────────── */
-  --brand-black:        #111827;
-  --brand-dark:         #374151;
-  --brand-mid:          #6B7280;
-  --brand-muted:        #9CA3AF;
-  --brand-border:       #E5E7EB;
-  --brand-border-light: #F3F4F6;
-  --brand-surface:      #F9FAFB;
-  --brand-surface-card: #F5F5F5;
-  --brand-dark-bg:      #101010;
+  /* ── Brand colours (light) — inspired by Cal.com clean SaaS palette ───────── */
+  --brand-black:        #111827;   /* ink / primary text */
+  --brand-dark:         #374151;   /* body text */
+  --brand-mid:          #6B7280;   /* muted secondary */
+  --brand-muted:        #9CA3AF;   /* tertiary / placeholder */
+  --brand-border:       #E5E7EB;   /* hairline borders */
+  --brand-border-light: #F3F4F6;   /* soft dividers */
+  --brand-surface:      #F9FAFB;   /* surface-soft: nav-pill bg, sections */
+  --brand-surface-card: #F5F5F5;   /* surface-card: feature cards, testimonials */
+  --brand-dark-bg:      #101010;   /* surface-dark: footer, deep inverse */
 
   --color-black:        var(--brand-black);
   --color-dark:         var(--brand-dark);
@@ -47,29 +47,30 @@
   --shadow-seg:         0 1px 3px rgba(0,0,0,.10);
 }
 
-/* ── Dark mode ─────────────────────────────────── */
 .dark {
-  --brand-black:        #F9FAFB;
-  --brand-dark:         #E5E7EB;
-  --brand-mid:          #9CA3AF;
-  --brand-muted:        #6B7280;
-  --brand-border:       #374151;
-  --brand-border-light: #1F2937;
-  --brand-surface:      #1F2937;
-  --brand-surface-card: #111827;
-  --brand-dark-bg:      #030712;
+  /* Cal.com surface-dark → near-black canvas */
+  --brand-black:        #ffffff;   /* on-dark: white text on dark surfaces */
+  --brand-dark:         #e5e5e5;   /* on-dark-soft: slightly muted white */
+  --brand-mid:          #a1a1aa;   /* body muted on dark (Cal on-dark-soft) */
+  --brand-muted:        #6b6b6b;   /* tertiary on dark */
+  --brand-border:       #333333;   /* hairline on dark */
+  --brand-border-light: #1f1f1f;   /* soft dividers on dark */
+  --brand-surface:      #1a1a1a;   /* surface-dark-elevated: cards, nav-pill, sections */
+  --brand-surface-card: #262626;   /* nested card background */
+  --brand-dark-bg:      #000000;   /* deepest canvas */
 
-  --app-bg:             #030712;
-  --app-shell-bg:       #111827;
-  --app-text:           #F9FAFB;
-  --app-text-secondary: #E5E7EB;
-  --app-text-muted:     #9CA3AF;
+  --app-bg:             #0a0a0a;   /* body / page background */
+  --app-shell-bg:       #111111;   /* app shell / surface-dark */
+  --app-text:           #ffffff;
+  --app-text-secondary: #e5e5e5;
+  --app-text-muted:     #a1a1aa;
 
-  --color-green-bg:     #064E3B;
-  --color-amber-bg:     #451A03;
-  --color-red-bg:       #450A0A;
-  --color-blue-bg:      #1E3A8A;
+  /* Semantic colours adapted for dark readability */
+  --color-green-bg:     #0a2f1f;
+  --color-amber-bg:     #3d2a0a;
+  --color-red-bg:       #3d0a0a;
+  --color-blue-bg:      #0a1f3d;
 
-  --shadow-sheet:       0 -4px 12px rgba(0,0,0,.40);
-  --shadow-seg:         0 1px 3px rgba(0,0,0,.30);
+  --shadow-sheet:       0 -4px 12px rgba(0,0,0,.60);
+  --shadow-seg:         0 1px 3px rgba(0,0,0,.50);
 }

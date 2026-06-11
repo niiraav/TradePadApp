@@ -26,10 +26,10 @@ export const InvoiceItemRow: React.FC<InvoiceItemRowProps> = ({
           <X size={14} className="text-brand-muted" />
         </button>
       )}
-      <span className="flex-1 text-xs font-medium truncate text-brand-dark">
+      <span className="flex-1 text-sm font-medium truncate text-brand-dark">
         {item.description}
       </span>
-      <span className={`shrink-0 text-xs font-bold ${isAddedOnSite ? 'text-status-green' : 'text-brand-black'}`}>
+      <span className={`shrink-0 text-sm font-bold ${isAddedOnSite ? 'text-status-green' : 'text-brand-black'}`}>
         £{item.amount.toFixed(2)}
       </span>
     </div>

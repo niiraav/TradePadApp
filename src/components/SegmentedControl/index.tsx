@@ -14,7 +14,7 @@ export const SegmentedControl: React.FC<SegmentedControlProps> = ({
   size = 'md',
 }) => {
   const height = 'min-h-11';
-  const fontSize = size === 'sm' ? 'text-xs' : 'text-xs';
+  const fontSize = size === 'sm' ? 'text-sm' : 'text-sm';
 
   return (
     <div className="flex bg-brand-borderLight rounded-lg p-[3px]">

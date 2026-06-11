@@ -4,13 +4,22 @@ import { clientsClaim } from 'workbox-core';
 
 declare const self: ServiceWorkerGlobalScope;
 
-// Always skip waiting so new SW activates immediately
+// Only skip waiting when explicitly told to (via message from app)
+// This prevents aggressive page reloads on mobile when app returns from background
 self.addEventListener('install', () => {
-  self.skipWaiting();
+  // Don't auto-skip-waiting — let the app control when to update
+  // self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
+});
+
+// Handle update messages from the app
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 // Precache all assets injected by VitePWA build
@@ -19,22 +28,13 @@ precacheAndRoute(self.__WB_MANIFEST);
 // Clean up old caches
 cleanupOutdatedCaches();
 
-// Take control immediately
+// Take control immediately (but only after activation, which is now manual)
 clientsClaim();
 
 // Notification click handler — navigate to Jobs unpaid filter
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   event.waitUntil(
-    self.clients
-      .matchAll({ type: 'window', includeUncontrolled: true })
-      .then((clientList) => {
-        for (const client of clientList) {
-          if (client.url.includes('/jobs') && 'focus' in client) {
-            return client.focus();
-          }
-        }
-        return self.clients.openWindow('/jobs');
-      })
+    self.clients.openWindow('/jobs?filter=unpaid')
   );
 });

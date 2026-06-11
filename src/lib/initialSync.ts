@@ -12,6 +12,13 @@ export async function initialSync(userId: string) {
     supabase.from('payments').select('*, jobs!inner(user_id)').eq('jobs.user_id', userId),
   ]);
 
+  if (profile.error) console.error('[initialSync] profiles fetch failed:', profile.error);
+  if (customers.error) console.error('[initialSync] customers fetch failed:', customers.error);
+  if (jobs.error) console.error('[initialSync] jobs fetch failed:', jobs.error);
+  if (lineItems.error) console.error('[initialSync] line_items fetch failed:', lineItems.error);
+  if (workLog.error) console.error('[initialSync] work_log fetch failed:', workLog.error);
+  if (payments.error) console.error('[initialSync] payments fetch failed:', payments.error);
+
   await db.transaction('rw', [db.profiles, db.customers, db.jobs, db.line_items, db.work_log, db.payments], async () => {
     if (profile.data) {
       await db.profiles.put({ ...(profile.data as Profile), _sync_status: 'synced' });

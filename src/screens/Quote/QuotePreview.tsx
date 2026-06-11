@@ -124,11 +124,12 @@ export default function QuotePreview({ jobId, onSend, onSaveDraft, onBack }: Quo
     return lines.join('\n');
   }, [job, customer, customerFirstName, items, total, termsLabel, depositPct, depositAmount, quoteValidDays, businessName]);
 
+  // BUG FIX: Always regenerate message when data changes, unless user is actively editing
   useEffect(() => {
-    if (!messageText && defaultMessage) {
+    if (!editingMessage) {
       setMessageText(defaultMessage);
     }
-  }, [defaultMessage]);
+  }, [defaultMessage, editingMessage]);
 
   /* ─── handlers ─── */
   const handleOpenSend = () => {
@@ -164,12 +165,13 @@ export default function QuotePreview({ jobId, onSend, onSaveDraft, onBack }: Quo
   };
 
   const handleGoSettings = () => {
+    localStorage.setItem('tradepad_redirected_from_quote', 'true');
     navigate('/settings');
   };
 
   if (loading) {
     return (
-      <div className="flex flex-col min-h-[100svh]">
+      <div className="flex flex-col h-full">
         <div className="flex-1 flex items-center justify-center">
           <div className="w-8 h-8 border-2 border-brand-border border-t-brand-black rounded-full animate-spin" />
         </div>
@@ -179,14 +181,14 @@ export default function QuotePreview({ jobId, onSend, onSaveDraft, onBack }: Quo
 
   if (!job || !customer) {
     return (
-      <div className="flex flex-col min-h-[100svh] items-center justify-center px-4">
+      <div className="flex flex-col h-full items-center justify-center px-4">
         <p className="text-md text-brand-muted">Quote not found</p>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col min-h-[100svh]">
+    <div className="flex flex-col h-full">
       {/* Header */}
       <div className="px-4 pt-2 pb-3 border-b border-brand-borderLight shrink-0 grid grid-cols-3 items-center">
         <button
@@ -212,13 +214,13 @@ export default function QuotePreview({ jobId, onSend, onSaveDraft, onBack }: Quo
           <div className="bg-status-amberMid border border-amber-200 rounded-lg px-3.5 py-2.5 mb-4 flex items-center gap-2">
             <AlertTriangle size={16} className="shrink-0 text-status-amber" />
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium text-status-amberDark">
+              <p className="text-sm font-medium text-status-amberDark">
                 Add your business name before sending
               </p>
             </div>
             <button
               onClick={handleGoSettings}
-              className="text-xs font-medium text-status-amberDark underline underline-offset-2 cursor-pointer shrink-0"
+              className="text-sm font-medium text-status-amberDark underline underline-offset-2 cursor-pointer shrink-0"
             >
               Settings →
             </button>
@@ -254,7 +256,7 @@ export default function QuotePreview({ jobId, onSend, onSaveDraft, onBack }: Quo
         </Button>
         <button
           onClick={handleSaveDraft}
-          className="w-full text-xs text-brand-mid font-medium underline underline-offset-2 cursor-pointer min-h-11"
+          className="w-full text-sm text-brand-mid font-medium underline underline-offset-2 cursor-pointer min-h-11"
         >
           Save as draft
         </button>
@@ -274,14 +276,14 @@ export default function QuotePreview({ jobId, onSend, onSaveDraft, onBack }: Quo
               onChange={(e) => setMessageText(e.target.value)}
               onBlur={() => setEditingMessage(false)}
               autoFocus
-              className="w-full min-h-[120px] p-3 bg-brand-surface border border-brand-border rounded-lg text-xs text-brand-dark font-normal leading-relaxed outline-none focus:border-brand-black"
+              className="w-full min-h-[120px] p-3 bg-brand-surface border border-brand-border rounded-lg text-sm text-brand-dark font-normal leading-relaxed outline-none focus:border-brand-black"
             />
           ) : (
             <div
               onClick={() => setEditingMessage(true)}
               className="bg-brand-surface border border-brand-border rounded-lg p-3 cursor-text"
             >
-              <p className="text-xs text-brand-dark leading-relaxed whitespace-pre-line">
+              <p className="text-sm text-brand-dark leading-relaxed whitespace-pre-line">
                 {messageText}
               </p>
               <p className="text-label text-brand-muted mt-1 italic">
@@ -310,14 +312,14 @@ export default function QuotePreview({ jobId, onSend, onSaveDraft, onBack }: Quo
           </Button>
           <button
             onClick={() => handleSend('copy')}
-            className="flex items-center justify-center gap-2 w-full min-h-11 text-xs font-medium text-brand-mid cursor-pointer underline underline-offset-2"
+            className="flex items-center justify-center gap-2 w-full min-h-11 text-sm font-medium text-brand-mid cursor-pointer underline underline-offset-2"
           >
             <Clipboard size={16} />
             Copy message
           </button>
           <button
             onClick={handleSheetDraft}
-            className="flex items-center justify-center gap-2 w-full min-h-11 text-xs font-medium text-brand-muted cursor-pointer"
+            className="flex items-center justify-center gap-2 w-full min-h-11 text-sm font-medium text-brand-muted cursor-pointer"
           >
             Save as draft
           </button>

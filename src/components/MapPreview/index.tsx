@@ -32,10 +32,10 @@ export const MapPreview: React.FC<MapPreviewProps> = ({ address, onTap }) => {
     return (
       <div
         onClick={handleClick}
-        className="h-[120px] rounded-lg flex flex-col items-center justify-center cursor-pointer overflow-hidden relative bg-[radial-gradient(circle,#E5E7EB_1px,transparent_1px)] bg-[length:12px_12px]"
+        className="h-[120px] rounded-lg flex flex-col items-center justify-center cursor-pointer overflow-hidden relative map-fallback-grid bg-[length:12px_12px]"
       >
         <MapPin size={28} className="text-brand-muted" />
-        <p className="text-xs text-brand-mid mt-1 px-4 text-center truncate w-full">
+        <p className="text-sm text-brand-mid mt-1 px-4 text-center truncate w-full">
           {address}
         </p>
         <div className="absolute bottom-1.5 right-2 flex items-center gap-1 text-label text-brand-muted">
@@ -66,13 +66,6 @@ export const MapPreview: React.FC<MapPreviewProps> = ({ address, onTap }) => {
         className="absolute inset-0 cursor-pointer"
         aria-label="Open map"
       />
-
-      {/* Address label */}
-      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent px-3 py-2">
-        <p className="text-xxs text-brand-surface font-medium truncate drop-shadow">
-          {address}
-        </p>
-      </div>
 
       {/* Directions button */}
       <button

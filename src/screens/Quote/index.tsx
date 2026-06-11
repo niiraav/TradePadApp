@@ -1,7 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAppStore } from '../../store/useAppStore';
 import { db } from '../../lib/db';
+import { captureJobCreated, captureQuoteSent } from '../../lib/analytics';
+import { showSuccess } from '../../components/Toast/store';
+import { hapticSuccess } from '../../lib/haptics';
 import LogMissedCall from './LogMissedCall';
 import CustomerDetails from './CustomerDetails';
 import QuoteBuilder from './QuoteBuilder';
@@ -23,6 +26,7 @@ type SendMethod = 'whatsapp' | 'sms' | 'copy';
 interface LocationState {
   entryPoint?: EntryPoint;
   customerId?: string;
+  jobId?: string;
 }
 
 /* ─── component ─── */
@@ -35,13 +39,88 @@ export default function Quote() {
   const state = (location.state as LocationState | null) || {};
   const entryPoint: EntryPoint = state.entryPoint || 'new_quote';
   const initialCustomerId = state.customerId;
+  const initialJobId = state.jobId;
 
   const [step, setStep] = useState<QuoteStep>(
     entryPoint === 'missed_call' ? 'missed_call' : 'customer_details'
   );
   const [customerId, setCustomerId] = useState<string | undefined>(initialCustomerId);
-  const [jobId, setJobId] = useState<string | undefined>(undefined);
+  const [jobId, setJobId] = useState<string | undefined>(initialJobId);
   const [sendMethod, setSendMethod] = useState<SendMethod | undefined>(undefined);
+
+  /* Allow direct navigation via query params (e.g. /quote?step=preview&jobId=xxx) */
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const stepParam = searchParams.get('step') as QuoteStep | null;
+    const jobIdParam = searchParams.get('jobId');
+    if (stepParam && ['missed_call', 'customer_details', 'builder', 'preview', 'sent'].includes(stepParam)) {
+      setStep(stepParam);
+    }
+    if (jobIdParam) {
+      setJobId(jobIdParam);
+    }
+    const customerIdParam = searchParams.get('customerId');
+    if (customerIdParam) {
+      setCustomerId(customerIdParam);
+    }
+  }, [location.search]);
+
+  // Persist quote state to localStorage so refresh/switch doesn't lose progress
+  // TTL: 24 hours (86400000 ms) to avoid stale drafts persisting forever
+  useEffect(() => {
+    if (step !== 'missed_call') {
+      const state = { step, customerId, jobId, sendMethod, timestamp: Date.now() };
+      localStorage.setItem('tradepad_quote_state', JSON.stringify(state));
+    }
+  }, [step, customerId, jobId, sendMethod]);
+
+  // Save state immediately when app goes to background (before iOS suspends tab)
+  useEffect(() => {
+    const saveNow = () => {
+      if (step !== 'missed_call') {
+        const state = { step, customerId, jobId, sendMethod, timestamp: Date.now() };
+        localStorage.setItem('tradepad_quote_state', JSON.stringify(state));
+      }
+    };
+    // pagehide fires before tab is killed/suspended
+    window.addEventListener('pagehide', saveNow);
+    // visibilitychange catches backgrounding
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') saveNow();
+    });
+    return () => {
+      window.removeEventListener('pagehide', saveNow);
+    };
+  }, [step, customerId, jobId, sendMethod]);
+
+  // Restore state from localStorage on mount (handles refresh / PWA reload / tab restore)
+  useEffect(() => {
+    const saved = localStorage.getItem('tradepad_quote_state');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved) as { step: QuoteStep; customerId?: string; jobId?: string; sendMethod?: SendMethod; timestamp: number };
+        // Only restore if less than 24 hours old
+        const TTL = 24 * 60 * 60 * 1000; // 24h
+        if (parsed.timestamp && (Date.now() - parsed.timestamp) > TTL) {
+          localStorage.removeItem('tradepad_quote_state');
+          return;
+        }
+        if (parsed.step && parsed.step !== 'missed_call') {
+          setStep(parsed.step);
+          if (parsed.customerId) setCustomerId(parsed.customerId);
+          if (parsed.jobId) setJobId(parsed.jobId);
+          if (parsed.sendMethod) setSendMethod(parsed.sendMethod);
+        }
+      } catch {
+        // ignore parse errors
+      }
+    }
+  }, []);
+
+  // Clear persisted state when leaving quote flow (completed or cancelled)
+  const clearPersistedState = () => {
+    localStorage.removeItem('tradepad_quote_state');
+  };
 
   /* Save customer data to Dexie (new or update) */
   const saveCustomer = async (data: { id: string; name: string; phone: string; address?: string }) => {
@@ -90,6 +169,7 @@ export default function Quote() {
   /* ─── handlers ─── */
 
   const handleMissedCallDone = () => {
+    clearPersistedState();
     navigate('/', { replace: true, state: { initialTab: 'tasks' } });
   };
 
@@ -139,6 +219,7 @@ export default function Quote() {
           retry_count: 0,
         });
         setJobId(newJobId);
+        captureJobCreated('new_quote');
       }
     }
 
@@ -170,16 +251,26 @@ export default function Quote() {
       _sync_status: 'pending',
     });
 
-    const workLogId = crypto.randomUUID();
-    await db.work_log.add({
-      id: workLogId,
-      job_id: jobId,
-      type: 'status_change',
-      description: `Quote sent via ${method === 'whatsapp' ? 'WhatsApp' : method === 'sms' ? 'SMS' : 'Copy'}`,
-      created_at: n,
-      _sync_status: 'pending',
-    });
-
+    const isCopy = method === 'copy';
+    if (!isCopy) {
+      const workLogId = crypto.randomUUID();
+      await db.work_log.add({
+        id: workLogId,
+        job_id: jobId,
+        type: 'quote_sent',
+        description: `Quote sent via ${method === 'whatsapp' ? 'WhatsApp' : 'SMS'}`,
+        created_at: n,
+        _sync_status: 'pending',
+      });
+      await db.sync_queue.add({
+        operation: 'insert',
+        table_name: 'work_log',
+        record_id: workLogId,
+        payload: { id: workLogId, job_id: jobId, type: 'quote_sent', description: `Quote sent via ${method === 'whatsapp' ? 'WhatsApp' : 'SMS'}`, created_at: n },
+        created_at: n,
+        retry_count: 0,
+      });
+    }
     await db.sync_queue.add({
       operation: 'update',
       table_name: 'jobs',
@@ -189,24 +280,20 @@ export default function Quote() {
       retry_count: 0,
     });
 
-    await db.sync_queue.add({
-      operation: 'insert',
-      table_name: 'work_log',
-      record_id: workLogId,
-      payload: { id: workLogId, job_id: jobId, type: 'status_change', description: `Quote sent via ${method === 'whatsapp' ? 'WhatsApp' : method === 'sms' ? 'SMS' : 'Copy'}`, created_at: n },
-      created_at: n,
-      retry_count: 0,
-    });
-
+    hapticSuccess();
+    showSuccess(isCopy ? 'Copied to clipboard' : 'Quote sent!');
+    captureQuoteSent(method);
     setSendMethod(method);
     setStep('sent');
   };
 
   const handlePreviewSaveDraft = () => {
+    clearPersistedState();
     navigate('/', { replace: true });
   };
 
   const handleSentViewJob = () => {
+    clearPersistedState();
     if (jobId) {
       navigate(`/jobs/${jobId}`, { replace: true });
     } else {
@@ -215,14 +302,17 @@ export default function Quote() {
   };
 
   const handleSentHome = () => {
+    clearPersistedState();
     navigate('/', { replace: true });
   };
 
   const handleSaveDraft = () => {
+    clearPersistedState();
     navigate('/', { replace: true });
   };
 
   const handleCancel = () => {
+    clearPersistedState();
     navigate(-1);
   };
 
@@ -242,7 +332,11 @@ export default function Quote() {
       );
 
     case 'builder':
-      if (!customerId) return null;
+      if (!customerId) {
+        // Guard: if user refreshed and lost state, redirect back to customer details
+        setStep('customer_details');
+        return null;
+      }
       return (
         <QuoteBuilder
           customerId={customerId}
@@ -254,7 +348,12 @@ export default function Quote() {
       );
 
     case 'preview':
-      if (!jobId) return null;
+      if (!jobId) {
+        // Guard: if user refreshed and lost state, redirect back to builder
+        if (customerId) setStep('builder');
+        else setStep('customer_details');
+        return null;
+      }
       return (
         <QuotePreview
           jobId={jobId}
@@ -265,7 +364,16 @@ export default function Quote() {
       );
 
     case 'sent':
-      if (!jobId || !sendMethod) return null;
+      if (!jobId || !sendMethod) {
+        if (jobId) {
+          setStep('preview');
+        } else if (customerId) {
+          setStep('builder');
+        } else {
+          setStep('customer_details');
+        }
+        return null;
+      }
       return (
         <QuoteSent
           jobId={jobId}

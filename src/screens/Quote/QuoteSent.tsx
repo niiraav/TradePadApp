@@ -44,7 +44,7 @@ export default function QuoteSent({ jobId, sendMethod, onViewJob, onHome }: Quot
 
   if (loading) {
     return (
-      <div className="flex flex-col min-h-[100svh]">
+      <div className="flex flex-col h-full">
         <div className="flex-1 flex items-center justify-center">
           <div className="w-8 h-8 border-2 border-brand-border border-t-brand-black rounded-full animate-spin" />
         </div>
@@ -54,7 +54,7 @@ export default function QuoteSent({ jobId, sendMethod, onViewJob, onHome }: Quot
 
   if (!job || !customer) {
     return (
-      <div className="flex flex-col min-h-[100svh] items-center justify-center px-4">
+      <div className="flex flex-col h-full items-center justify-center px-4">
         <p className="text-md text-brand-muted">Quote not found</p>
       </div>
     );
@@ -65,10 +65,15 @@ export default function QuoteSent({ jobId, sendMethod, onViewJob, onHome }: Quot
     : sendMethod === 'sms' ? 'Via SMS'
     : 'Copied to clipboard';
 
+  const screenTitle =
+    sendMethod === 'copy'
+      ? 'Quote copied'
+      : 'Quote sent';
+
   const customerFirstName = customer.name.split(' ')[0] || 'there';
 
   return (
-    <div className="flex flex-col min-h-[100svh]">
+    <div className="flex flex-col h-full">
       {/* Empty header spacer for alignment */}
       <div className="px-4 pt-2 pb-3 border-b border-brand-borderLight shrink-0 flex items-center justify-between opacity-0">
         <div className="min-h-11 pr-4 text-sm font-medium">&nbsp;</div>
@@ -85,7 +90,7 @@ export default function QuoteSent({ jobId, sendMethod, onViewJob, onHome }: Quot
 
         {/* Title */}
         <h2 className="text-xl font-extrabold text-brand-black mb-2">
-          Quote sent
+          {screenTitle}
         </h2>
 
         {/* Details */}
@@ -96,10 +101,10 @@ export default function QuoteSent({ jobId, sendMethod, onViewJob, onHome }: Quot
 
         {/* What happens next card */}
         <div className="w-full bg-brand-surface border border-brand-border rounded-lg p-4 mb-7 text-left">
-          <div className="text-micro font-bold text-brand-muted uppercase tracking-[0.5px] mb-2">
+          <div className="text-micro font-bold text-brand-muted tracking-[0.5px] mb-2">
             What happens next
           </div>
-          <div className="text-xs text-brand-dark leading-relaxed">
+          <div className="text-sm text-brand-dark leading-relaxed">
             Job saved under <strong className="text-brand-black">Quoted</strong> in your Jobs list.
             <br /><br />
             When {customerFirstName} confirms, open the job and tap <strong className="text-brand-black">Mark as Booked</strong> to move it forward.

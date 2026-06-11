@@ -1,149 +1,79 @@
 import React from 'react';
-import { Phone } from 'lucide-react';
 import type { Job, Customer } from '../../lib/db';
-import { FlagBadge, type FlagType } from '../FlagBadge';
+import { Phone, AlertTriangle, FileText, Banknote, Clock, ArrowRight } from 'lucide-react';
+import { haptic } from '../../lib/haptics';
 
-export type TaskType = 'overdue' | 'chase' | 'missed_call' | 'no_show' | 'stale_quote' | 'urgent_new';
+export type TaskType = 'overdue' | 'chase' | 'missed_call' | 'no_show' | 'stale_quote' | 'urgent_new' | 'draft_quote';
 
 export interface TaskCardProps {
   type: TaskType;
   job?: Job;
   customer?: Customer;
-  flag?: FlagType;
-  flagDays?: number;
-  // For missed_call type only
-  callerPhone?: string;
-  callerName?: string;
-  callTime?: string;
-  // Actions
-  primaryAction?: { label: string; onClick: () => void };
-  secondaryAction?: { label: string; onClick: () => void };
-  tertiaryAction?: { label: string; onClick: () => void };
+  timeAgo?: string;
+  amount?: string;
+  staleNote?: string;
+  title?: string;
+  subtitle?: string;
+  contextLine?: string; // e.g. "Quote saved 2h ago · £450 · No message sent"
+  onTap: () => void;
 }
+
+const typeConfig: Record<TaskType, { icon: React.ReactNode; label: string; urgency: 'high' | 'medium' | 'low' }> = {
+  missed_call: { icon: <Phone size={16} />, label: 'Missed call', urgency: 'high' },
+  overdue: { icon: <AlertTriangle size={16} />, label: 'Payment overdue', urgency: 'high' },
+  stale_quote: { icon: <FileText size={16} />, label: 'Quote pending', urgency: 'medium' },
+  chase: { icon: <Banknote size={16} />, label: 'Chase payment', urgency: 'medium' },
+  no_show: { icon: <Clock size={16} />, label: 'No-show', urgency: 'medium' },
+  urgent_new: { icon: <Phone size={16} />, label: 'New enquiry', urgency: 'medium' },
+  draft_quote: { icon: <FileText size={16} />, label: 'Draft quote', urgency: 'low' },
+};
 
 export const TaskCard: React.FC<TaskCardProps> = ({
   type,
-  job,
   customer,
-  flag,
-  flagDays,
-  callerPhone,
-  callerName,
-  callTime,
-  primaryAction,
-  secondaryAction,
-  tertiaryAction,
+  timeAgo,
+  title: titleOverride,
+  subtitle: subtitleOverride,
+  contextLine,
+  onTap,
 }) => {
-  const contextText =
-    type === 'missed_call'
-      ? callerName || callerPhone || 'Missed call'
-      : customer && job
-        ? `${customer.name} · ${job.title}`
-        : customer?.name || 'Task';
+  const config = typeConfig[type];
+  const urgencyBorder = {
+    high: 'border-l-status-red',
+    medium: 'border-l-amber-400',
+    low: 'border-l-brand-mid',
+  }[config.urgency];
 
-  const subText =
-    type === 'missed_call'
-      ? callTime || 'Missed call'
-      : type === 'overdue'
-        ? 'Invoice payment overdue'
-        : type === 'chase'
-          ? 'Chase payment'
-          : type === 'stale_quote'
-            ? 'Quote still pending'
-            : type === 'no_show'
-              ? 'Customer did not show'
-              : type === 'urgent_new'
-                ? 'New enquiry'
-                : '';
-
-  /* ── Missed call card (wireframe S2 mc-card) ── */
-  if (type === 'missed_call') {
-    const actions = [
-      primaryAction,
-      secondaryAction,
-      tertiaryAction,
-    ].filter(Boolean) as Array<{ label: string; onClick: () => void }>;
-
-    return (
-      <div className="bg-white border border-brand-border rounded-lg overflow-hidden mb-5">
-        {/* Header row */}
-        <div className="flex items-center gap-2.5 px-3.5 py-3">
-          <Phone size={18} className="text-brand-mid shrink-0" />
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-semibold text-brand-black truncate">
-              {callerPhone || 'Missed call'}
-            </div>
-            {subText && (
-              <div className="text-label text-brand-muted mt-0.5">{subText}</div>
-            )}
-          </div>
-        </div>
-
-        {/* Action row with border separators */}
-        {actions.length > 0 && (
-          <div className="flex border-t border-brand-borderLight">
-            {actions.map((action, i) => {
-              const isPrimary = i === 0 || i === 1;
-              const isMuted = i === 2;
-              return (
-                <button
-                  key={i}
-                  onClick={action.onClick}
-                  className={`
-                    flex-1 min-h-11 flex items-center justify-center
-                    text-xs font-semibold cursor-pointer
-                    border-r border-brand-borderLight last:border-r-0
-                    ${isPrimary ? 'text-brand-black' : ''}
-                    ${isMuted ? 'text-brand-muted font-normal' : ''}
-                  `}
-                >
-                  {action.label}
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  /* ── Generic card (non-missed_call types) ── */
-  const allActions = [primaryAction, secondaryAction, tertiaryAction].filter(Boolean) as Array<{
-    label: string;
-    onClick: () => void;
-  }>;
+  const title = titleOverride || customer?.name || 'Task';
+  const subtitle = subtitleOverride || config.label;
 
   return (
-    <div className="bg-white border border-brand-border rounded-xl px-4 py-3.5">
-      <div className="flex justify-between items-start">
-        <div className="flex-1 min-w-0">
-          {flag && (
-            <div className="mb-1">
-              <FlagBadge type={flag} days={flagDays} />
-            </div>
-          )}
-          <div className="text-sm font-semibold text-brand-black truncate">
-            {contextText}
-          </div>
-          {subText && (
-            <div className="text-xs text-brand-muted mt-1">{subText}</div>
-          )}
+    <div
+      onClick={() => { haptic('light'); onTap(); }}
+      className={`bg-white border border-brand-border rounded-2xl overflow-hidden mb-3 cursor-pointer active:scale-[0.98] active:bg-brand-borderLight/50 transition-all duration-150 border-l-4 ${urgencyBorder}`}
+    >
+      {/* Header row */}
+      <div className="flex items-center justify-between px-4 pt-3 pb-1">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-brand-mid flex-shrink-0">{config.icon}</span>
+          <h3 className="text-base font-bold text-brand-black truncate">{title}</h3>
         </div>
+        {timeAgo && (
+          <span className="text-sm font-medium text-brand-mid flex-shrink-0 ml-2">{timeAgo}</span>
+        )}
       </div>
 
-      {allActions.length > 0 && (
-        <div className="mt-3 flex gap-2 flex-wrap">
-          {allActions.map((action, i) => (
-            <button
-              key={i}
-              onClick={action.onClick}
-              className="min-h-11 px-4 rounded-lg border border-brand-border text-xs font-semibold text-brand-black bg-white cursor-pointer"
-            >
-              {action.label}
-            </button>
-          ))}
+      {/* Subtitle / context */}
+      <div className="px-4 pb-3">
+        <p className="text-sm text-brand-mid mt-0.5">{subtitle}</p>
+        {contextLine && (
+          <p className="text-sm text-brand-mid mt-1 truncate">{contextLine}</p>
+        )}
+        <div className="flex items-center justify-between mt-2">
+          <span className="text-xs font-medium text-brand-muted uppercase tracking-wider">View details</span>
+          <ArrowRight size={14} className="text-brand-muted" />
         </div>
-      )}
+      </div>
     </div>
   );
 };

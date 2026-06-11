@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, X } from 'lucide-react';
 import { db } from '../../lib/db';
 import { useAppStore } from '../../store/useAppStore';
+import { captureJobCreated } from '../../lib/analytics';
 import { Button } from '../../components/Button';
 
 /* ─── helpers ─── */
@@ -76,6 +77,7 @@ export default function LogMissedCall({ onDone }: LogMissedCallProps) {
       updated_at: n,
       _sync_status: 'pending',
     });
+    captureJobCreated('missed_call');
 
     const workLogId = crypto.randomUUID();
     await db.work_log.add({
@@ -126,7 +128,7 @@ export default function LogMissedCall({ onDone }: LogMissedCallProps) {
   const canSave = phoneValid && !saving;
 
   return (
-    <div className="flex flex-col min-h-[100svh]">
+    <div className="flex flex-col h-full">
       {/* Header */}
       <div className="px-4 pt-2 pb-3 border-b border-brand-borderLight shrink-0 grid grid-cols-3 items-center">
         <button
@@ -149,7 +151,7 @@ export default function LogMissedCall({ onDone }: LogMissedCallProps) {
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-2">
         <div className="mb-5">
           <div className="mb-2.5">
-            <label className="block text-label font-semibold text-brand-muted uppercase tracking-[0.3px] mb-1">
+            <label className="block text-label font-semibold text-brand-muted tracking-[0.3px] mb-1">
               Phone number
             </label>
             <input
@@ -158,16 +160,17 @@ export default function LogMissedCall({ onDone }: LogMissedCallProps) {
               value={phone}
               onChange={(e) => { setPhone(e.target.value); setPhoneError(false); }}
               placeholder="e.g. 07700 900123"
+              autoFocus
               className={`w-full h-12 px-3.5 border-2 rounded-lg text-base font-medium text-brand-black placeholder:text-brand-muted outline-none ${
                 phoneError ? 'border-status-error' : 'border-brand-border focus:border-brand-black'
               }`}
             />
             {phoneError && (
-              <p className="text-xxs text-status-error mt-1">Enter a valid UK mobile number</p>
+              <p className="text-sm text-status-error mt-1">Enter a valid UK mobile number</p>
             )}
           </div>
           <div>
-            <label className="block text-label font-semibold text-brand-muted uppercase tracking-[0.3px] mb-1">
+            <label className="block text-label font-semibold text-brand-muted tracking-[0.3px] mb-1">
               Name <span className="text-label text-brand-muted font-normal normal-case tracking-0 ml-1">(optional)</span>
             </label>
             <input
@@ -180,13 +183,13 @@ export default function LogMissedCall({ onDone }: LogMissedCallProps) {
           </div>
         </div>
 
-        <div className="bg-brand-surface border border-brand-border rounded-lg p-3.5 text-xxs text-brand-muted leading-relaxed">
+        <div className="bg-brand-surface border border-brand-border rounded-lg p-3.5 text-sm text-brand-muted leading-relaxed">
           Saved to <strong className="text-brand-dark">Tasks</strong>. Call back first — once confirmed as a lead, tap <strong className="text-brand-dark">Create quote</strong> on the task card.
         </div>
       </div>
 
       {/* Footer */}
-      <div className="sticky bottom-0 z-30 bg-white border-t border-brand-borderLight shadow-sheet">
+      <div className="sticky bottom-0 z-30 bg-[var(--app-shell-bg)] border-t border-brand-borderLight shadow-sheet">
         <div className="flex flex-col gap-2 px-4 py-3 pb-[calc(32px_+_env(safe-area-inset-bottom))]">
           <Button
             variant="primary"

@@ -76,33 +76,33 @@ export const QuotePreviewCard: React.FC<QuotePreviewCardProps> = (props) => {
       {/* Header — white bg, ref + status badge */}
       <div className="px-4 pt-3.5 pb-2.5 border-b border-brand-borderLight">
         <div className="flex items-center justify-between mb-1.5">
-          <span className="text-xxs font-medium text-brand-muted">
+          <span className="text-sm font-medium text-brand-muted">
             {quoteNumber ? `Quote #${quoteNumber}` : 'Quote'}
           </span>
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-[3px] rounded-full bg-status-blueBg text-status-blue text-micro font-bold uppercase tracking-[0.4px]">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-[3px] rounded-full bg-status-blueBg text-status-blue text-micro font-bold tracking-[0.4px]">
             <span className="w-[5px] h-[5px] rounded-full bg-status-blue" />
             Quoted
           </span>
         </div>
         <div className="text-lg font-bold text-brand-black">{jobTitle}</div>
-        <div className="text-xs text-brand-mid mt-0.5">{customerDisplay}</div>
+        <div className="text-sm text-brand-mid mt-0.5">{customerDisplay}</div>
       </div>
 
       {/* Info rows */}
       <div className="border-b border-brand-borderLight">
         <div className="flex justify-between items-center px-4 py-2.5 border-b border-brand-surface">
-          <span className="text-xs text-brand-muted">Date &amp; time</span>
-          <span className="text-xs font-medium text-brand-black text-right">
+          <span className="text-sm text-brand-muted">Date &amp; time</span>
+          <span className="text-sm font-medium text-brand-black text-right">
             {formatDateTime(scheduledStart, scheduledEnd)}
           </span>
         </div>
         <div className="flex justify-between items-center px-4 py-2.5 border-b border-brand-surface">
-          <span className="text-xs text-brand-muted">Payment</span>
-          <span className="text-xs font-medium text-brand-black text-right">{termsLabel}</span>
+          <span className="text-sm text-brand-muted">Payment</span>
+          <span className="text-sm font-medium text-brand-black text-right">{termsLabel}</span>
         </div>
         <div className="flex justify-between items-center px-4 py-2.5">
-          <span className="text-xs text-brand-muted">Valid until</span>
-          <span className="text-xs font-medium text-brand-black text-right">{validUntil()}</span>
+          <span className="text-sm text-brand-muted">Valid until</span>
+          <span className="text-sm font-medium text-brand-black text-right">{validUntil()}</span>
         </div>
       </div>
 
@@ -111,7 +111,7 @@ export const QuotePreviewCard: React.FC<QuotePreviewCardProps> = (props) => {
         {lineItems.map((item, idx) => (
           <div
             key={item.id}
-            className={`flex justify-between py-1.5 text-xs text-brand-dark ${
+            className={`flex justify-between py-1.5 text-sm text-brand-dark ${
               idx < lineItems.length - 1 ? 'border-b border-brand-surface' : ''
             }`}
           >
@@ -124,7 +124,7 @@ export const QuotePreviewCard: React.FC<QuotePreviewCardProps> = (props) => {
       {/* Notes */}
       {notes && (
         <div className="px-4 py-2.5 border-t border-brand-surface">
-          <p className="text-xxs text-brand-mid leading-relaxed whitespace-pre-line">{notes}</p>
+          <p className="text-sm text-brand-mid leading-relaxed whitespace-pre-line">{notes}</p>
         </div>
       )}
 
@@ -135,7 +135,7 @@ export const QuotePreviewCard: React.FC<QuotePreviewCardProps> = (props) => {
       </div>
 
       {/* Footer */}
-      <div className="px-4 py-3 border-t border-brand-borderLight text-xxs text-brand-muted leading-relaxed">
+      <div className="px-4 py-3 border-t border-brand-borderLight text-sm text-brand-muted leading-relaxed">
         {businessName}
       </div>
     </div>

@@ -1,8 +1,8 @@
 import React from 'react';
-import { MapPin, Clock } from 'lucide-react';
+import { Clock, MapPin, ArrowRight, Phone, MessageCircle } from 'lucide-react';
 import type { Job, Customer } from '../../lib/db';
 import { FlagBadge, type FlagType } from '../FlagBadge';
-import { Button } from '../Button';
+import { haptic } from '../../lib/haptics';
 
 export interface JobCardProps {
   job: Job;
@@ -11,11 +11,8 @@ export interface JobCardProps {
   isNextUp?: boolean;
   flag?: FlagType;
   flagDays?: number;
-  showAddress?: boolean;
-  showNotHome?: boolean;
   onRunningLate?: () => void;
   onImHere?: () => void;
-  onNotHome?: () => void;
   onBodyTap?: () => void;
 }
 
@@ -26,11 +23,8 @@ export const JobCard: React.FC<JobCardProps> = ({
   isNextUp = false,
   flag,
   flagDays,
-  showAddress = true,
-  showNotHome = false,
-  onRunningLate,
+  onRunningLate: _onRunningLate,
   onImHere,
-  onNotHome,
   onBodyTap,
 }) => {
   const formattedTime = job.scheduled_start
@@ -41,96 +35,130 @@ export const JobCard: React.FC<JobCardProps> = ({
       }).toLowerCase()
     : null;
 
-  const cardBorderClass = isNextUp
-    ? 'border-2 border-brand-black'
-    : 'border border-brand-border';
-
-  return (
-    <div
-      className={`bg-white ${cardBorderClass} rounded-xl p-4`}
-      onClick={onBodyTap}
-    >
-      {/* Eyebrow row */}
-      <div className="flex items-center gap-2">
-        {isNextUp && (
-          <span className="text-micro font-bold uppercase tracking-wider text-brand-surface bg-brand-black px-2.5 py-0.5 rounded-xs">
-            NEXT UP
-          </span>
-        )}
-        {flag && <FlagBadge type={flag} days={flagDays} />}
-      </div>
-
-      {/* Customer row */}
-      <div className="mt-2">
-        <h3 className="text-lg font-extrabold text-brand-black truncate">{customer.name}</h3>
-        <p className="text-xs text-brand-mid mt-0.5 truncate">{job.title}</p>
-      </div>
-
-      {/* Meta row */}
-      <div className="mt-2.5 flex flex-col gap-1">
-        {showAddress && customer.address && (
+  if (!isNextUp) {
+    return (
+      <div
+        className="bg-white border border-brand-border rounded-xl p-4 cursor-pointer active:scale-[0.98] active:bg-brand-borderLight/50 transition-all duration-150"
+        onClick={() => { haptic('light'); onBodyTap?.(); }}
+      >
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <MapPin size={14} className="text-brand-muted" />
-            <span className="text-xs text-brand-mid">{customer.address}</span>
+            {flag && <FlagBadge type={flag} days={flagDays} />}
           </div>
-        )}
-        {showAddress && !customer.address && (
-          <div className="flex items-center gap-2">
-            <MapPin size={14} className="text-brand-muted" />
-            <span className="text-xs text-brand-mid">No address</span>
-          </div>
-        )}
-        {formattedTime && (
-          <div className="flex items-center gap-2">
-            <Clock size={14} className="text-brand-muted" />
-            <span className="text-xs text-brand-mid">{formattedTime}</span>
-          </div>
-        )}
-      </div>
-
-      {/* Amount row */}
-      <div className="mt-2.5 flex items-center justify-between">
-        <span className="text-md font-bold text-brand-black">
-          £{lineItemsTotal.toFixed(2)}
-        </span>
-        <span className="text-xs text-brand-muted">
-          {job.payment_terms === 'on_completion' ? 'On completion'
-            : job.payment_terms === 'deposit' ? 'Deposit'
-            : 'Invoice'}
-        </span>
-      </div>
-
-      {/* CTA row */}
-      {(onRunningLate || onImHere) && (
-        <div className="mt-3.5 flex gap-2" onClick={(e) => e.stopPropagation()}>
-          {onRunningLate && (
-            <div className="flex-1">
-              <Button variant="primary" onClick={onRunningLate} fullWidth>
-                Running late
-              </Button>
-            </div>
-          )}
-          {onImHere && (
-            <div className="flex-1">
-              <Button variant="secondary" onClick={onImHere} fullWidth>
-                I'm here
-              </Button>
+          {formattedTime && (
+            <div className="flex items-center gap-1.5">
+              <Clock size={14} className="text-brand-muted" />
+              <span className="text-sm text-brand-mid font-medium">{formattedTime}</span>
             </div>
           )}
         </div>
-      )}
+        <div className="mt-2">
+          <h3 className="text-lg font-extrabold text-brand-black truncate">{customer.name}</h3>
+          <p className="text-sm text-brand-mid mt-0.5 truncate">{job.title}</p>
+        </div>
+        <div className="mt-2.5 flex items-center justify-between">
+          <span className="text-md font-bold text-brand-black">£{lineItemsTotal.toFixed(2)}</span>
+          <span className="text-sm text-brand-muted">
+            {job.payment_terms === 'on_completion' ? 'On completion'
+              : job.payment_terms === 'deposit' ? 'Deposit'
+              : 'Invoice'}
+          </span>
+        </div>
+      </div>
+    );
+  }
 
-      {/* Customer not home link */}
-      {showNotHome && onNotHome && (
-        <div className="mt-3 text-center">
+  // NextUp card
+  const address = customer.address;
+
+  const handleCall = () => {
+    haptic('light');
+    if (customer.phone) window.open(`tel:${customer.phone}`, '_self');
+  };
+
+  const handleMessage = () => {
+    haptic('light');
+    const phone = customer.phone?.replace(/\D/g, '');
+    if (!phone) return;
+    const text = encodeURIComponent(`Hi ${customer.name}, I'm on my way to you now for the ${job.title}.`);
+    window.open(`https://wa.me/${phone}?text=${text}`, '_blank');
+  };
+
+  const handleNavigate = () => {
+    haptic('light');
+    if (address) {
+      window.open(`https://maps.google.com/?q=${encodeURIComponent(address)}`, '_blank');
+    }
+  };
+
+  return (
+    <div className="bg-white border-2 border-brand-border rounded-2xl p-4 overflow-hidden">
+      <div onClick={() => { haptic('light'); onBodyTap?.(); }} className="cursor-pointer active:opacity-80 transition-opacity duration-100">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />
+            <span className="text-micro font-bold tracking-[0.7px] text-blue-600">
+              NEXT UP
+            </span>
+          </div>
+          {formattedTime && (
+            <div className="flex items-center gap-1.5">
+              <Clock size={12} className="text-brand-mid" />
+              <span className="text-xxs font-medium text-brand-mid">{formattedTime}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-2.5">
+          <h3 className="text-base font-bold text-brand-black truncate">{customer.name}</h3>
+          <p className="text-sm text-brand-mid mt-0.5 truncate">{job.title}</p>
+        </div>
+
+        {address && (
           <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onNotHome();
-            }}
-            className="text-xxs text-brand-muted underline underline-offset-2 cursor-pointer"
+            onClick={(e) => { e.stopPropagation(); handleNavigate(); }}
+            className="mt-2 flex items-center gap-1.5 text-left w-full cursor-pointer active:opacity-70 transition-opacity duration-100"
           >
-            Customer not home?
+            <MapPin size={14} className="text-blue-500 shrink-0" />
+            <span className="text-sm text-blue-600 underline underline-offset-2 truncate">{address}</span>
+          </button>
+        )}
+
+        <div className="mt-2 flex items-center justify-between">
+          <span className="text-base font-bold text-brand-black">£{lineItemsTotal.toFixed(2)}</span>
+          <span className="text-sm text-brand-muted">
+            {job.payment_terms === 'on_completion' ? 'On completion'
+              : job.payment_terms === 'deposit' ? 'Deposit'
+              : 'Invoice'}
+          </span>
+        </div>
+      </div>
+
+      <div className="mt-3 flex gap-2" onClick={(e) => e.stopPropagation()}>
+        <button
+          onClick={handleCall}
+          className="flex-1 h-12 flex items-center justify-center gap-2 rounded-xl bg-white border-2 border-brand-border text-brand-black text-sm font-semibold cursor-pointer active:bg-brand-borderLight transition-colors duration-100"
+        >
+          <Phone size={16} />
+          Call
+        </button>
+        <button
+          onClick={handleMessage}
+          className="flex-1 h-12 flex items-center justify-center gap-2 rounded-xl bg-white border-2 border-brand-border text-brand-black text-sm font-semibold cursor-pointer active:bg-brand-borderLight transition-colors duration-100"
+        >
+          <MessageCircle size={16} />
+          Message
+        </button>
+      </div>
+
+      {onImHere && (
+        <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={() => { haptic('medium'); onImHere(); }}
+            className="w-full h-12 flex items-center justify-center gap-2 rounded-xl bg-brand-black text-brand-surface text-sm font-semibold cursor-pointer active:brightness-90 transition-all duration-100"
+          >
+            I&apos;m here
+            <ArrowRight size={16} />
           </button>
         </div>
       )}

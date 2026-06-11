@@ -89,18 +89,25 @@ Import in `src/main.tsx`: `import '@fontsource/inter/400.css'; import '@fontsour
 | `text-sm` | `14px` | 500 | 1.4 | Sub-labels, secondary actions, step back labels |
 | `text-xs` | `13px` | 400 | 1.4 | Quote item description, notes, helper text |
 | `text-xxs` | `12px` | 500 | 1.3 | Meta info, time stamps, phone numbers in strips |
-| `text-label` | `11px` | 700 | 1 | Form field labels, section labels (always uppercase + tracked) |
-| `text-micro` | `10px` | 700 | 1 | Eyebrow labels (e.g. "NEXT UP", "TODAY") — uppercase + tracked |
+| `text-label` | `12px` | 700 | 1 | Form field labels, section labels (always uppercase + tracked) |
+| `text-micro` | `11px` | 700 | 1 | Eyebrow labels (e.g. "NEXT UP", "TODAY") — uppercase + tracked |
 
 ### Label convention
 All field labels and section headings:
 ```css
-font-size: 10–11px;
+font-size: 11–12px;
 font-weight: 700;
 text-transform: uppercase;
 letter-spacing: 0.5–0.7px;
 color: #9CA3AF;
 ```
+
+### Tradesman-friendly minimums (WCAG-aligned)
+- **No primary readable text below 14px** — body text, list rows, customer names, job titles, amounts, addresses, dates, and action buttons must all be ≥14px (`text-sm` minimum).
+- **Body text minimum 16px** — prevents iOS auto-zoom on inputs and is readable for a 40+ year old tradesman outdoors or with gloves.
+- **Uppercase labels and badges** (`text-label`, `text-micro`) can be 11–12px because they are short, tracked, and all-caps.
+- **Secondary meta info** (timestamps, recorded dates, phone numbers, quote numbers) can be 12–13px (`text-xs`).
+- **When in doubt, bump up** — tradesman usability overrides the design spec when they conflict.
 
 ---
 

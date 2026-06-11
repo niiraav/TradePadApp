@@ -6,7 +6,6 @@ import { useAppStore } from '../../store/useAppStore';
 import { useTheme } from '../../hooks/useTheme';
 import { supabase } from '../../lib/supabase';
 import { BottomSheet, SheetRow } from '../../components/BottomSheet';
-import { TabBar } from '../../components/TabBar';
 import { InlineEditRow } from '../../components/InlineEditRow';
 import SyncIndicator from '../../components/SyncIndicator';
 
@@ -51,6 +50,11 @@ export default function Settings() {
   const [nudgeDismissed] = useState(false);
   const [showTermsHelp, setShowTermsHelp] = useState(false);
   const { isDark, toggle } = useTheme();
+  
+  // Detect active quote draft for quick resume
+  const [draftInfo, setDraftInfo] = useState<{ customerName: string; step: string; jobId: string } | null>(null);
+  const [customItemCount, setCustomItemCount] = useState(0);
+  const [wasRedirectedFromQuote, setWasRedirectedFromQuote] = useState(false);
 
   useEffect(() => {
     if (!userId) return;
@@ -58,7 +62,51 @@ export default function Settings() {
       setProfile(p || null);
       setLoading(false);
     });
+    db.custom_items.where('user_id').equals(userId).count().then(setCustomItemCount);
   }, [userId]);
+  
+  // Check if user was redirected from quote flow (missing required info)
+  useEffect(() => {
+    const redirected = localStorage.getItem('tradepad_redirected_from_quote') === 'true';
+    setWasRedirectedFromQuote(redirected);
+  }, []);
+  
+  // Check for active quote draft in localStorage (only if redirected from quote)
+  useEffect(() => {
+    if (!wasRedirectedFromQuote) return;
+    
+    const saved = localStorage.getItem('tradepad_quote_state');
+    if (!saved) return;
+    try {
+      const parsed = JSON.parse(saved);
+      const TTL = 24 * 60 * 60 * 1000; // 24 hours
+      if (!parsed.timestamp || Date.now() - parsed.timestamp > TTL) return;
+      if (!parsed.jobId || parsed.step === 'sent' || parsed.step === 'missed_call') return;
+      
+      // Look up customer name from the job's customer
+      db.jobs.get(parsed.jobId).then((job) => {
+        if (!job) return;
+        db.customers.get(job.customer_id).then((customer) => {
+          if (customer) {
+            setDraftInfo({
+              customerName: customer.name,
+              step: parsed.step,
+              jobId: parsed.jobId,
+            });
+          }
+        });
+      });
+    } catch {
+      // ignore parse errors
+    }
+  }, [wasRedirectedFromQuote]);
+
+  // Clear the redirect flag when leaving Settings (if not clicking Resume)
+  useEffect(() => {
+    return () => {
+      localStorage.removeItem('tradepad_redirected_from_quote');
+    };
+  }, []);
 
   const saveField = useCallback(
     async (field: keyof Profile, value: string | number) => {
@@ -82,16 +130,17 @@ export default function Settings() {
   const handleLogout = async () => {
     const confirmed = window.confirm('Are you sure? You\'ll need to sign in again.');
     if (!confirmed) return;
-    await supabase.auth.signOut();
+
+    // Clear local auth markers
     localStorage.removeItem('tradepad_mock_user');
     useAppStore.getState().setUserId(null);
-    await db.delete();
-    navigate('/auth', { replace: true });
-  };
 
-  const handleNavigate = (tab: 'home' | 'jobs' | 'settings') => {
-    if (tab === 'settings') return;
-    navigate(tab === 'home' ? '/' : '/jobs');
+    // Tear down session + DB (fire-and-forget to prevent hang blocking reload)
+    supabase.auth.signOut().catch(() => {});
+    db.delete().catch(() => {});
+
+    // Navigate and reload in one step — prevents blank-screen race
+    window.location.replace('/auth');
   };
 
   const fullName = profile?.full_name || '';
@@ -107,7 +156,7 @@ export default function Settings() {
 
   if (loading) {
     return (
-      <div className="flex flex-col min-h-[100svh] bg-brand-surface">
+      <div className="flex flex-col h-full bg-brand-surface">
         <div className="flex-1 flex items-center justify-center">
           <div className="text-sm text-brand-muted">Loading…</div>
         </div>
@@ -116,9 +165,9 @@ export default function Settings() {
   }
 
   return (
-    <div className="flex flex-col min-h-[100svh] bg-brand-surface">
+    <div className="flex flex-col h-full bg-brand-surface">
       {/* Header */}
-      <div className="px-4 pt-4 pb-3 bg-white border-b border-brand-borderLight flex-shrink-0">
+      <div className="px-4 pt-4 pb-3 bg-[var(--app-shell-bg)] border-b border-brand-borderLight flex-shrink-0">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-extrabold text-brand-black">Settings</h1>
           <SyncIndicator />
@@ -126,12 +175,39 @@ export default function Settings() {
       </div>
 
       {/* Scrollable body */}
-      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-4 min-h-0">
+      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24 min-h-0">
+        {/* Resume draft banner */}
+        {draftInfo && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 flex items-start gap-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-amber-800">
+                Draft quote for {draftInfo.customerName}
+              </p>
+              <p className="text-sm text-amber-700 mt-0.5">
+                {draftInfo.step === 'builder'
+                  ? 'In progress — add items or preview'
+                  : draftInfo.step === 'preview'
+                  ? 'Ready to send'
+                  : 'Continue where you left off'}
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                localStorage.removeItem('tradepad_redirected_from_quote');
+                navigate(`/quote?step=${draftInfo.step}&jobId=${draftInfo.jobId}`);
+              }}
+              className="shrink-0 h-9 px-3 bg-amber-700 text-white text-sm font-semibold rounded-lg active:opacity-80 transition-opacity"
+            >
+              Resume →
+            </button>
+          </div>
+        )}
+
         {/* Nudge banner */}
         {showNudge && (
           <div className="bg-status-redBg border border-red-200 rounded-lg p-3 mb-4 flex items-start gap-2.5">
             <AlertTriangle size={16} className="text-status-red flex-shrink-0 mt-0.5" />
-            <div className="text-xs text-brand-dark leading-relaxed">
+            <div className="text-sm text-brand-dark leading-relaxed">
               <strong className="text-status-red">Add your business name</strong> — it appears on every quote you send. Tap Business name below to add it.
             </div>
           </div>
@@ -139,7 +215,7 @@ export default function Settings() {
 
         {/* Business profile */}
         <div className="mb-6">
-          <div className="text-micro font-bold uppercase tracking-[0.7px] text-brand-muted mb-2 px-0.5">
+          <div className="text-micro font-bold tracking-[0.7px] text-brand-muted mb-2 px-0.5">
             Business profile
           </div>
           <div className="bg-white border border-brand-border rounded-xl overflow-hidden">
@@ -188,7 +264,7 @@ export default function Settings() {
                       />
                       <button
                         onClick={() => setEditingField(null)}
-                        className="text-xs font-semibold text-brand-black underline underline-offset-2"
+                        className="text-sm font-semibold text-brand-black underline underline-offset-2"
                       >
                         Done
                       </button>
@@ -237,9 +313,30 @@ export default function Settings() {
           </div>
         </div>
 
+        {/* My Items */}
+        <div className="mb-6">
+          <div className="text-micro font-bold tracking-[0.7px] text-brand-muted mb-2 px-0.5">
+            My items
+          </div>
+          <div className="bg-white border border-brand-border rounded-xl overflow-hidden">
+            <div
+              className="px-4 min-h-13 flex items-center justify-between cursor-pointer active:bg-brand-borderLight/50 transition-colors"
+              onClick={() => navigate('/settings/custom-items')}
+            >
+              <span className="text-sm font-medium text-brand-dark">Saved items</span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-brand-black">
+                  {customItemCount} saved
+                </span>
+                <ChevronRight size={14} className="text-brand-muted" />
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Quote defaults */}
         <div className="mb-6">
-          <div className="text-micro font-bold uppercase tracking-[0.7px] text-brand-muted mb-2 px-0.5">
+          <div className="text-micro font-bold tracking-[0.7px] text-brand-muted mb-2 px-0.5">
             Quote defaults
           </div>
           <div className="bg-white border border-brand-border rounded-xl overflow-hidden">
@@ -278,7 +375,7 @@ export default function Settings() {
 
         {/* Job defaults */}
         <div className="mb-6">
-          <div className="text-micro font-bold uppercase tracking-[0.7px] text-brand-muted mb-2 px-0.5">
+          <div className="text-micro font-bold tracking-[0.7px] text-brand-muted mb-2 px-0.5">
             Job defaults
           </div>
           <div className="bg-white border border-brand-border rounded-xl overflow-hidden">
@@ -304,7 +401,7 @@ export default function Settings() {
 
         {/* Appearance */}
         <div className="mb-6">
-          <div className="text-micro font-bold uppercase tracking-[0.7px] text-brand-muted mb-2 px-0.5">
+          <div className="text-micro font-bold tracking-[0.7px] text-brand-muted mb-2 px-0.5">
             Appearance
           </div>
           <div className="bg-white border border-brand-border rounded-xl overflow-hidden">
@@ -320,15 +417,15 @@ export default function Settings() {
                 )}
                 <span className="text-sm font-medium text-brand-dark">Dark mode</span>
               </div>
-              <div className="relative inline-flex h-6 w-11 items-center rounded-full bg-gray-200 transition-colors duration-200">
+              <div
+                className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200"
+                style={{ backgroundColor: isDark ? 'var(--brand-black)' : 'var(--brand-border)' }}
+              >
                 <div
-                  className={`switch-knob inline-flex h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-200 ${
+                  className={`inline-flex h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-200 ${
                     isDark ? 'translate-x-6' : 'translate-x-1'
                   }`}
                 />
-                <div className={`absolute inset-0 rounded-full transition-colors duration-200 ${
-                  isDark ? 'bg-brand-black' : 'bg-gray-200'
-                }`} />
               </div>
             </div>
           </div>
@@ -336,7 +433,7 @@ export default function Settings() {
 
         {/* About */}
         <div className="mb-6">
-          <div className="text-micro font-bold uppercase tracking-[0.7px] text-brand-muted mb-2 px-0.5">
+          <div className="text-micro font-bold tracking-[0.7px] text-brand-muted mb-2 px-0.5">
             About
           </div>
           <div className="bg-white border border-brand-border rounded-xl overflow-hidden">
@@ -393,14 +490,14 @@ export default function Settings() {
           ))}
           {tradeOtherMode && (
             <div className="mt-4 pt-4 border-t border-brand-borderLight">
-              <label className="text-micro font-bold uppercase tracking-[0.7px] text-brand-muted mb-2 block">
+              <label className="text-micro font-bold tracking-[0.7px] text-brand-muted mb-2 block">
                 Your trade
               </label>
               <input
                 type="text"
                 value={tradeOtherInput}
                 onChange={(e) => setTradeOtherInput(e.target.value)}
-                placeholder="e.g. Roofer, Tiler, Glazier"
+                placeholder="Your trade, e.g. Roofer"
                 className="w-full h-12 px-4 text-base font-medium text-brand-black border border-brand-border rounded-xl outline-none focus:border-brand-black bg-white"
                 autoFocus
               />
@@ -439,12 +536,12 @@ export default function Settings() {
             >
               <HelpCircle size={12} />
             </button>
-            <span className="text-xs text-brand-muted">What are payment terms?</span>
+            <span className="text-sm text-brand-muted">What are payment terms?</span>
           </div>
 
           {showTermsHelp && (
             <div className="bg-sky-50 rounded-lg p-3 border border-sky-200">
-              <p className="text-xs text-sky-700 leading-relaxed">
+              <p className="text-sm text-sky-700 leading-relaxed">
                 This is the default way you ask to be paid. It appears on every quote you send. You can change it for any individual job.
               </p>
             </div>
@@ -461,15 +558,12 @@ export default function Settings() {
                 }`}
               >
                 <span className={`font-semibold text-sm ${isSelected ? 'text-brand-black' : 'text-brand-mid'}`}>{opt.label}</span>
-                <span className={`text-xxs leading-relaxed ${isSelected ? 'text-brand-black' : 'text-brand-muted'}`}>{opt.description}</span>
+                <span className={`text-sm leading-relaxed ${isSelected ? 'text-brand-black' : 'text-brand-muted'}`}>{opt.description}</span>
               </button>
             );
           })}
         </div>
       </BottomSheet>
-
-      {/* Tab bar */}
-      <TabBar activeTab="settings" onNavigate={handleNavigate} />
     </div>
   );
 }

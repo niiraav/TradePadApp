@@ -111,7 +111,7 @@ export const InlineEditRow: React.FC<InlineEditRowProps> = ({
               </div>
               <button
                 onClick={handleDone}
-                className={`text-xs font-semibold underline underline-offset-2 ${error ? 'text-status-red' : 'text-brand-black'}`}
+                className={`text-sm font-semibold underline underline-offset-2 ${error ? 'text-status-red' : 'text-brand-black'}`}
               >
                 {error ? 'Invalid' : 'Done'}
               </button>

@@ -1,13 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { MapPin, Clock } from 'lucide-react';
+import { MapPin, Clock, Phone, MessageCircle, Check } from 'lucide-react';
 import type { Job, Customer } from '../../lib/db';
-import { StatusBadge } from '../StatusBadge';
 
 export interface ActiveBarProps {
   customer: Customer;
   job: Job;
   elapsedSeconds: number;
-  dayNumber?: number;
   onTap?: () => void;
   onDone?: () => void;
 }
@@ -33,7 +31,6 @@ export const ActiveBar: React.FC<ActiveBarProps> = ({
   customer,
   job,
   elapsedSeconds,
-  dayNumber,
   onTap,
   onDone,
 }) => {
@@ -46,60 +43,105 @@ export const ActiveBar: React.FC<ActiveBarProps> = ({
     return () => clearInterval(interval);
   }, [elapsedSeconds]);
 
+  const startedTime = job.actual_start ? formatStartTime(job.actual_start) : '';
+
+  const handleCall = () => {
+    if (customer.phone) {
+      window.location.href = `tel:${encodeURIComponent(customer.phone)}`;
+    }
+  };
+
+  const handleMessage = () => {
+    if (customer.phone) {
+      window.location.href = `sms:${encodeURIComponent(customer.phone)}`;
+    }
+  };
+
   return (
-    <div
-      onClick={onTap}
-      className="bg-white border-2 border-brand-black rounded-lg mx-4 mt-3 cursor-pointer overflow-hidden"
-    >
-      {/* Row 1: status badge + elapsed time + Done */}
-      <div className="flex items-center justify-between px-4 py-2.5 gap-2.5">
-        <StatusBadge status="in_progress" size="sm" />
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="text-xs font-medium text-brand-mid flex items-center gap-1">
-            <Clock size={12} className="text-brand-mid" />
-  {job.is_multi_day && dayNumber !== undefined
-              ? `Day ${dayNumber}`
-              : displayTime}
-          </span>
-          {onDone && (
+    <div className="mt-3">
+      {/* RIGHT NOW label */}
+      <div className="mb-1.5">
+        <span className="text-sm font-bold tracking-[0.7px] text-brand-muted">
+          RIGHT NOW
+        </span>
+      </div>
+
+      <div
+        onClick={onTap}
+        className="bg-white border-2 border-brand-border rounded-2xl overflow-hidden cursor-pointer"
+      >
+        {/* Status row: IN PROGRESS + dot on left, Started time on right */}
+        <div className="flex items-center justify-between px-4 pt-4 pb-2">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-status-green inline-block" />
+            <span className="text-micro text-status-green">
+              IN PROGRESS
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Clock size={14} className="text-brand-mid" />
+            <span className="text-sm font-medium text-brand-mid">
+              {startedTime ? `Started ${startedTime}` : displayTime}
+            </span>
+          </div>
+        </div>
+
+        {/* Customer + job title */}
+        <div className="px-4 pb-1">
+          <h3 className="text-base font-bold text-brand-black truncate">
+            {customer.name}
+          </h3>
+          <p className="text-sm text-brand-mid mt-0.5 truncate">
+            {job.title}
+          </p>
+        </div>
+
+        {/* Address */}
+        <div className="px-4 pb-3">
+          <div className="flex items-center gap-2">
+            <MapPin size={14} className="text-brand-muted flex-shrink-0" />
+            <span className="text-sm text-brand-mid truncate">
+              {customer.address || 'No address'}
+            </span>
+          </div>
+        </div>
+
+        {/* Call + Message buttons */}
+        <div className="px-4 pb-2.5 flex gap-2" onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={handleCall}
+            disabled={!customer.phone}
+            className="flex-1 flex items-center justify-center gap-2 h-12 rounded-xl border-2 border-brand-border bg-white text-sm font-semibold text-brand-black cursor-pointer disabled:opacity-50"
+          >
+            <Phone size={16} className="text-brand-mid" />
+            Call
+          </button>
+          <button
+            onClick={handleMessage}
+            disabled={!customer.phone}
+            className="flex-1 flex items-center justify-center gap-2 h-12 rounded-xl border-2 border-brand-border bg-white text-sm font-semibold text-brand-black cursor-pointer disabled:opacity-50"
+          >
+            <MessageCircle size={16} className="text-brand-mid" />
+            Message
+          </button>
+        </div>
+
+        {/* Mark done button */}
+        {onDone && (
+          <div className="px-4 pb-4" onClick={(e) => e.stopPropagation()}>
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 onDone();
               }}
-              className="h-13 px-4 bg-brand-black text-brand-surface rounded-xl text-sm font-semibold tracking-wide shrink-0 cursor-pointer"
+              className="w-full h-13 flex items-center justify-center gap-2 bg-brand-black text-brand-surface rounded-xl text-sm font-semibold cursor-pointer"
             >
-              Done
+              <Check size={16} />
+              Mark done
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
-
-      {/* Row 2: customer name + job title (wireframe l1-title: 16px/700) */}
-      <div className="px-4 pb-1">
-        <span className="text-base font-bold text-brand-black truncate block">
-          {customer.name} · {job.title}
-        </span>
-      </div>
-
-      {/* Row 3: address + start time */}
-      {(customer.address || job.actual_start) && (
-        <div className="flex items-center gap-4 px-4 pb-2.5 pt-0">
-          {customer.address && (
-            <div className="flex items-center gap-1.5 min-w-0">
-              <MapPin size={12} className="shrink-0 text-brand-muted" />
-              <span className="text-label text-brand-mid truncate">
-                {customer.address}
-              </span>
-            </div>
-          )}
-          {job.actual_start && (
-            <span className="text-label text-brand-muted shrink-0">
-              Started {formatStartTime(job.actual_start)}
-            </span>
-          )}
-        </div>
-      )}
     </div>
   );
 };

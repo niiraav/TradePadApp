@@ -1,5 +1,6 @@
 import React from 'react';
-import * as Dialog from '@radix-ui/react-dialog';
+import { motion, AnimatePresence } from 'framer-motion';
+import { haptic } from '../../lib/haptics';
 
 export interface BottomSheetProps {
   isOpen: boolean;
@@ -16,24 +17,30 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
   subtitle,
   children,
 }) => {
-  if (!isOpen) return null;
-
   return (
-    <Dialog.Root open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <Dialog.Content asChild>
+    <AnimatePresence>
+      {isOpen && (
         <div className="absolute inset-0 z-50 flex flex-col justify-end">
-          <Dialog.Overlay asChild>
-            <div
-              className="absolute inset-0 bg-black/25"
-              onClick={onClose}
-            />
-          </Dialog.Overlay>
-          <div className="relative z-[51] bg-white rounded-t-2xl shadow-sheet transition-transform duration-300 ease-in-out translate-y-0">
+          {/* Backdrop */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="absolute inset-0 bg-black/25 dark:bg-black/60"
+            onClick={() => { haptic('light'); onClose(); }}
+          />
+          {/* Sheet */}
+          <motion.div
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '100%' }}
+            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+            className="relative z-[51] bg-white dark:bg-[var(--app-shell-bg)] rounded-t-2xl shadow-sheet"
+          >
             <div className="w-9 h-1 bg-brand-border rounded-sm mx-auto mt-3 mb-5" />
             {title && (
-              <Dialog.Title asChild>
-                <h2 className="text-md font-bold text-brand-black px-6">{title}</h2>
-              </Dialog.Title>
+              <h2 className="text-md font-bold text-brand-black px-6">{title}</h2>
             )}
             {subtitle && (
               <p className="text-sm text-brand-mid mt-1 px-6">{subtitle}</p>
@@ -41,10 +48,10 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
             <div className="px-6 pb-10 pt-2">
               {children}
             </div>
-          </div>
+          </motion.div>
         </div>
-      </Dialog.Content>
-    </Dialog.Root>
+      )}
+    </AnimatePresence>
   );
 };
 
@@ -67,17 +74,22 @@ export const SheetRow: React.FC<SheetRowProps> = ({
 }) => {
   const labelClass = variant === 'destructive' ? 'text-status-red' : 'text-brand-black';
 
+  const handleTap = () => {
+    haptic('light');
+    onTap();
+  };
+
   return (
     <div
-      onClick={onTap}
-      className={`flex items-center gap-3.5 min-h-14 cursor-pointer ${
+      onClick={handleTap}
+      className={`flex items-center gap-3.5 min-h-14 cursor-pointer active:opacity-70 transition-opacity duration-100 ${
         isLast ? '' : 'border-t border-brand-borderLight'
       }`}
     >
       {icon}
       <div className="flex flex-col">
         <span className={`text-md font-medium ${labelClass}`}>{label}</span>
-        {sublabel && <span className="text-xs text-brand-muted">{sublabel}</span>}
+        {sublabel && <span className="text-sm text-brand-muted">{sublabel}</span>}
       </div>
     </div>
   );

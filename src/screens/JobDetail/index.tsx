@@ -1,15 +1,20 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  ChevronLeft, Phone, MessageCircle, MessageSquare, Clock, Banknote, Pencil, Building2, Check, Calendar, Plus, X, MoreVertical,
+  ChevronLeft, Phone, MessageCircle, MessageSquare, Clock, Banknote, Pencil, Building2, Check, Calendar, Plus, X, MoreVertical, MapPin, Navigation,
 } from 'lucide-react';
-import { db, type Job, type Customer, type LineItem, type WorkLogEntry, type Profile, type Payment } from '../../lib/db';
+import { db, type Job, type Customer, type LineItem, type WorkLogEntry, type Profile, type Payment, type JobPhoto, type MaterialItem } from '../../lib/db';
 import { useAppStore } from '../../store/useAppStore';
+import { captureJobMarkedPaid, captureJobBooked, captureJobStarted, captureJobCancelled, capturePaymentChase, capturePhotoAdded } from '../../lib/analytics';
+import { showSuccess, showToast } from '../../components/Toast/store';
+import { hapticSuccess } from '../../lib/haptics';
 import { BottomSheet, SheetRow } from '../../components/BottomSheet';
+import { VoiceInputButton } from '../../components/VoiceInputButton';
 import { Button } from '../../components/Button';
 import { MapPreview } from '../../components/MapPreview';
 import { InvoiceItemRow, InvoiceTotalRow } from '../../components/InvoiceItemRow';
 import { StatusBadge } from '../../components/StatusBadge';
+import { PhotoGallery } from '../../components/PhotoGallery';
 
 /* ─── helpers ─── */
 
@@ -17,6 +22,16 @@ function now() { return new Date().toISOString(); }
 
 function formatShortDate(d: Date): string {
   return d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' });
+}
+
+function formatInvoiceSent(isoDate: string): string {
+  const d = new Date(isoDate);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  if (days < 1) return 'Sent today';
+  if (days === 1) return 'Sent yesterday';
+  return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
 function formatTime(d: Date): string {
@@ -48,18 +63,15 @@ function formatLogTime(iso: string): string {
 
 function toDateValue(iso?: string): string {
   if (!iso) return '';
-  const d = new Date(iso);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  const [datePart] = iso.split('T');
+  return datePart;
 }
 
 function toTimeValue(iso?: string): string {
   if (!iso) return '';
-  const d = new Date(iso);
-  const h = String(d.getHours()).padStart(2, '0');
-  const m = String(d.getMinutes()).padStart(2, '0');
+  const match = iso.match(/T(\d{2}):(\d{2})/);
+  if (!match) return '';
+  const [, h, m] = match;
   return `${h}:${m}`;
 }
 
@@ -69,6 +81,17 @@ function addTwoHours(timeStr: string): string {
   const d = new Date();
   d.setHours(h + 2, m, 0, 0);
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function formatElapsed(start?: string, now?: Date): string {
+  if (!start || !now) return '0m';
+  const startTime = new Date(start).getTime();
+  const nowTime = now.getTime();
+  const diff = Math.max(0, nowTime - startTime);
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+  if (hours > 0) return `${hours}h ${mins}m`;
+  return `${mins}m`;
 }
 
 function combineDateTime(dateStr: string, timeStr: string): string | undefined {
@@ -93,7 +116,9 @@ type SheetState =
   | 'booking_confirmation'
   | 'edit_details'
   | 'send_update'
-  | 'send_receipt';
+  | 'send_receipt'
+  | 'change_status'
+  | 'edit_payment_method';
 
 /* ─── component ─── */
 
@@ -114,6 +139,8 @@ export default function JobDetail() {
   const [chargeAmount, setChargeAmount] = useState('');
   const [noteText, setNoteText] = useState('');
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [photos, setPhotos] = useState<JobPhoto[]>([]);
+  const [materialItems, setMaterialItems] = useState<MaterialItem[]>([]);
 
   /* Initialize callout amount from profile */
   useEffect(() => {
@@ -132,9 +159,15 @@ export default function JobDetail() {
   const [editDate, setEditDate] = useState('');
   const [editStartTime, setEditStartTime] = useState('');
   const [editEndTime, setEditEndTime] = useState('');
-  const [editNotes, setEditNotes] = useState('');
+  const [editNotes, setEditNotes] = useState("");
+  const [editAddress, setEditAddress] = useState("");
   const [updateMessage, setUpdateMessage] = useState('');
   const [bookingMessage, setBookingMessage] = useState('');
+  const [elapsedNow, setElapsedNow] = useState(new Date());
+  useEffect(() => {
+    const interval = setInterval(() => setElapsedNow(new Date()), 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   /* ─── load data ─── */
   const refresh = useCallback(async () => {
@@ -157,6 +190,11 @@ export default function JobDetail() {
 
     const pmts = await db.payments.where('job_id').equals(jobId).toArray();
     setPayments(pmts);
+
+    const phs = await db.job_photos.where('job_id').equals(jobId).toArray();
+    setPhotos(phs);
+    const mats = await db.material_items.where('job_id').equals(jobId).toArray();
+    setMaterialItems(mats);
 
     setLoading(false);
   }, [jobId, userId]);
@@ -187,6 +225,54 @@ export default function JobDetail() {
     });
   };
 
+  const handleSaveMaterialsCost = useCallback(async (value: string) => {
+    const cost = parseFloat(value);
+    if (isNaN(cost) || cost <= 0) return;
+
+    const n = now();
+    const itemId = crypto.randomUUID();
+
+    // Clear existing material items for this job and create a single total
+    await db.material_items.where('job_id').equals(jobId!).delete();
+    await db.material_items.add({
+      id: itemId,
+      job_id: jobId!,
+      user_id: userId!,
+      description: 'Materials',
+      quantity: 1,
+      unit_cost: cost,
+      markup_pct: 0,
+      unit_price: cost,
+      total_cost: cost,
+      total_price: cost,
+      added_on_site: true,
+      created_at: n,
+      _sync_status: 'pending',
+    });
+    await db.sync_queue.add({
+      operation: 'insert',
+      table_name: 'material_items',
+      record_id: itemId,
+      payload: {
+        id: itemId,
+        job_id: jobId!,
+        user_id: userId!,
+        description: 'Materials',
+        quantity: 1,
+        unit_cost: cost,
+        markup_pct: 0,
+        unit_price: cost,
+        total_cost: cost,
+        total_price: cost,
+        added_on_site: true,
+        created_at: n,
+      },
+      created_at: n,
+      retry_count: 0,
+    });
+
+    refresh();
+  }, [jobId, userId, refresh]);
 
   const handleAddCharge = async () => {
     const amount = parseFloat(chargeAmount);
@@ -257,6 +343,9 @@ export default function JobDetail() {
       _sync_status: 'pending',
     });
     await addToSyncQueue('jobs', job.id, { status: 'cancelled', cancellation_reason: reason, updated_at: n });
+    hapticSuccess();
+    showToast('Job cancelled', 'success', 2000);
+    captureJobCancelled(reason);
     setSheet(null);
     refresh();
   };
@@ -320,6 +409,11 @@ export default function JobDetail() {
         updated_at: n,
         _sync_status: 'pending',
       });
+      hapticSuccess();
+      showSuccess('Job marked as paid');
+      hapticSuccess();
+    showSuccess('Job marked as paid');
+    captureJobMarkedPaid();
       await db.work_log.add({
         id: crypto.randomUUID(),
         job_id: job.id,
@@ -355,6 +449,7 @@ export default function JobDetail() {
       updated_at: n,
       _sync_status: 'pending',
     });
+    captureJobMarkedPaid();
     await db.work_log.add({
       id: crypto.randomUUID(),
       job_id: job.id,
@@ -388,6 +483,9 @@ export default function JobDetail() {
       _sync_status: 'pending',
     });
     await addToSyncQueue('jobs', job.id, { status: 'booked', updated_at: n });
+    hapticSuccess();
+    showToast('Job booked', 'success');
+    captureJobBooked();
     refresh();
 
     // Generate booking confirmation message
@@ -424,6 +522,9 @@ export default function JobDetail() {
       _sync_status: 'pending',
     });
     await addToSyncQueue('jobs', job.id, { status: 'in_progress', actual_start: n, updated_at: n });
+    hapticSuccess();
+    showToast('Job started', 'success');
+    captureJobStarted();
     refresh();
   };
 
@@ -451,6 +552,57 @@ export default function JobDetail() {
     refresh();
   };
 
+  const handleChangeStatus = async (newStatus: 'booked' | 'in_progress' | 'awaiting_payment') => {
+    if (!job) return;
+    const n = now();
+    const prevStatus = job.status;
+    await db.jobs.update(job.id, {
+      status: newStatus,
+      updated_at: n,
+      _sync_status: 'pending',
+    });
+    await db.work_log.add({
+      id: crypto.randomUUID(),
+      job_id: job.id,
+      type: 'status_change',
+      description: `Status changed from ${prevStatus} to ${newStatus}`,
+      created_at: n,
+      _sync_status: 'pending',
+    });
+    await addToSyncQueue('jobs', job.id, { status: newStatus, updated_at: n });
+    setSheet(null);
+    refresh();
+  };
+
+  const handleChangePaymentMethod = async (newMethod: 'cash' | 'bank_transfer' | 'terminal' | 'other') => {
+    if (!job || payments.length === 0) return;
+    const n = now();
+    const lastPayment = payments[payments.length - 1];
+    
+    // Update the last payment record
+    await db.payments.update(lastPayment.id, {
+      method: newMethod,
+      updated_at: n,
+      _sync_status: 'pending',
+    });
+    
+    // Log the change
+    await db.work_log.add({
+      id: crypto.randomUUID(),
+      job_id: job.id,
+      type: 'status_change',
+      description: `Payment method updated: ${lastPayment.method} → ${newMethod}`,
+      created_at: n,
+      _sync_status: 'pending',
+    });
+    
+    await addToSyncQueue('payments', lastPayment.id, { method: newMethod, updated_at: n });
+    
+    showToast('Payment method updated', 'success', 2000);
+    setSheet(null);
+    refresh();
+  };
+
   const handleEditDetails = async () => {
     if (!job) return;
     const n = now();
@@ -460,6 +612,7 @@ export default function JobDetail() {
     if (editTitle.trim() && editTitle.trim() !== job.title) changes.push('title');
     if (combinedStart !== job.scheduled_start) changes.push('date/time');
     if (editNotes.trim() !== (job.notes || '')) changes.push('notes');
+    if (editAddress.trim() !== (customer?.address || '')) changes.push('address');
 
     await db.jobs.update(job.id, {
       title: editTitle.trim() || job.title,
@@ -476,6 +629,18 @@ export default function JobDetail() {
       notes: editNotes.trim() || undefined,
       updated_at: n,
     });
+
+    if (customer && editAddress.trim() !== (customer.address || '')) {
+      await db.customers.update(customer.id, {
+        address: editAddress.trim() || undefined,
+        updated_at: n,
+        _sync_status: 'pending',
+      });
+      await addToSyncQueue('customers', customer.id, {
+        address: editAddress.trim() || undefined,
+        updated_at: n,
+      });
+    }
 
     if (changes.length > 0) {
       await db.work_log.add({
@@ -646,26 +811,6 @@ export default function JobDetail() {
     navigate(`/jobs/${newJobId}`);
   };
 
-  const handleWriteOff = async () => {
-    if (!job) return;
-    const n = now();
-    await db.jobs.update(job.id, {
-      status: 'written_off',
-      updated_at: n,
-      _sync_status: 'pending',
-    });
-    await db.work_log.add({
-      id: crypto.randomUUID(),
-      job_id: job.id,
-      type: 'status_change',
-      description: `Job written off — £${total.toFixed(2)}`,
-      created_at: n,
-      _sync_status: 'pending',
-    });
-    await addToSyncQueue('jobs', job.id, { status: 'written_off', updated_at: n });
-    refresh();
-  };
-
   const handleSendReminder = async (method: 'whatsapp' | 'sms') => {
     if (!job || !customer) return;
     const n = now();
@@ -694,6 +839,7 @@ export default function JobDetail() {
       _sync_status: 'pending',
     });
     await addToSyncQueue('jobs', job.id, { invoice_sent_at: n, updated_at: n });
+    capturePaymentChase(method);
     setSheet(null);
     refresh();
   };
@@ -717,7 +863,7 @@ export default function JobDetail() {
     >
       <div className="mb-4">
         <div className="bg-brand-surface border border-brand-border rounded-lg p-3.5">
-          <p className="text-xs text-brand-dark leading-relaxed">
+          <p className="text-sm text-brand-dark leading-relaxed">
             Hi {customer?.name}, payment of £{total.toFixed(2)} for {job?.title} has been confirmed. Thanks for your business! — {profile?.business_name || 'Your tradesperson'}
           </p>
         </div>
@@ -744,80 +890,72 @@ export default function JobDetail() {
   /* ─── render helpers ─── */
 
   const renderPaidFooter = () => (
-    <div className="sticky bottom-0 z-30 bg-white border-t border-brand-borderLight shadow-sheet">
-      <div className="flex flex-col gap-2 px-4 py-3 pb-[calc(32px_+_env(safe-area-inset-bottom))]">
-        <Button variant="primary" onClick={() => navigate('/', { replace: true })}>
-          Go Home
-        </Button>
-        <Button variant="secondary" onClick={() => setSheet('send_receipt')}>
-          Send receipt
-        </Button>
-      </div>
+    <div className="shrink-0 z-30 bg-[var(--app-shell-bg)] border-t border-brand-borderLight px-4 py-2 pb-[calc(4px_+_env(safe-area-inset-bottom))]">
+      <Button variant="primary" onClick={() => setSheet('send_receipt')}>
+        Send receipt
+      </Button>
     </div>
   );
 
   const renderTerminalFooter = () => (
-    <div className="sticky bottom-0 z-30 bg-white border-t border-brand-borderLight shadow-sheet">
-      <div className="flex flex-col gap-2 px-4 py-3 pb-[calc(32px_+_env(safe-area-inset-bottom))]">
-        <Button variant="primary" onClick={() => navigate('/', { replace: true })}>
-          Go Home
-        </Button>
-      </div>
+    <div className="shrink-0 z-30 bg-[var(--app-shell-bg)] border-t border-brand-borderLight px-4 py-2 pb-[calc(4px_+_env(safe-area-inset-bottom))]">
+      <Button variant="primary" onClick={() => navigate('/', { replace: true })}>
+        Go Home
+      </Button>
     </div>
   );
 
   const renderHeader = () => (
-    <div className="px-4 pt-2 pb-3 border-b border-brand-borderLight shrink-0">
-      {/* Back + Status badge row */}
+    <div className="px-4 pt-1 pb-2 border-b border-brand-borderLight shrink-0">
+      {/* Back + options row */}
       <div className="flex items-center justify-between">
         <button
           onClick={() => navigate(-1)}
-          className="inline-flex items-center gap-1 min-h-11 pr-4 text-sm font-medium text-brand-mid cursor-pointer"
+          className="inline-flex items-center gap-1 h-9 pr-4 text-sm font-medium text-brand-mid cursor-pointer"
         >
-          <ChevronLeft size={22} className="-mt-px text-brand-muted" />
+          <ChevronLeft size={20} className="-mt-px text-brand-muted" />
           Back
         </button>
         <div className="flex items-center gap-2">
           {(job?.status === 'booked' || job?.status === 'no_show' || job?.status === 'in_progress' || job?.status === 'awaiting_payment') && (
             <button
               onClick={() => setSheet('more_options')}
-              className="w-10 h-10 flex items-center justify-center rounded-lg cursor-pointer text-brand-muted hover:bg-brand-surface transition-colors"
-              aria-label="More options"
+              className="w-8 h-8 flex items-center justify-center rounded-lg cursor-pointer text-brand-muted hover:text-brand-dark hover:bg-brand-surface transition-colors"
+              aria-label="More"
             >
-              <MoreVertical size={20} />
+              <MoreVertical size={18} />
             </button>
           )}
         </div>
       </div>
       {/* Name + contact actions row */}
-      <div className="flex items-start gap-3 mt-1">
+      <div className="flex items-start gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <h1 className="text-title font-bold text-brand-black truncate leading-tight">{customer?.name}</h1>
             {job && job.status !== 'quoted' && <StatusBadge status={job.status} />}
           </div>
-          <p className="text-sm font-medium text-brand-mid mt-1 truncate">{job?.title}</p>
+          <p className="text-sm font-medium text-brand-mid truncate">{job?.title}</p>
         </div>
         {hasContactButtons && (
-          <div className="flex gap-1.5 shrink-0 pt-0.5">
+          <div className="flex gap-1.5 shrink-0">
             <button
               onClick={handleCall}
-              className="w-10 h-10 border border-brand-border rounded-lg bg-brand-surface flex items-center justify-center cursor-pointer active:bg-brand-borderLight"
+              className="w-9 h-9 border border-brand-border rounded-lg bg-brand-surface flex items-center justify-center cursor-pointer active:bg-brand-borderLight"
               aria-label="Call customer"
             >
-              <Phone size={18} className="text-brand-dark" />
+              <Phone size={16} className="text-brand-dark" />
             </button>
             <button
               onClick={handleMessage}
-              className="w-10 h-10 border border-brand-border rounded-lg bg-brand-surface flex items-center justify-center cursor-pointer active:bg-brand-borderLight"
+              className="w-9 h-9 border border-brand-border rounded-lg bg-brand-surface flex items-center justify-center cursor-pointer active:bg-brand-borderLight"
               aria-label="Message customer"
             >
-              <MessageCircle size={18} className="text-brand-dark" />
+              <MessageCircle size={16} className="text-brand-dark" />
             </button>
           </div>
         )}
       </div>
-
     </div>
   );
 
@@ -830,79 +968,134 @@ export default function JobDetail() {
     return entry ? entry.created_at : null;
   }, [workLog]);
 
-  const renderBookedBody = () => {
-    if (!job || !customer) return null;
+  const renderPhotosAndMaterials = (editable: boolean = true) => {
+    const materialsTotal = materialItems.reduce((sum, m) => sum + (m.total_price || 0), 0);
+
     return (
-      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-2">
-        {job.status === 'booked' && confirmedAt && (
-          <div className="flex items-center gap-1.5 -mt-3 mb-4">
-            <Check className="w-3.5 h-3.5 text-emerald-600" />
-            <span className="text-label font-semibold text-emerald-600">
-              Confirmed by customer · {formatShortDate(new Date(confirmedAt))}
-            </span>
+      <>
+        <div className="mb-5">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-micro font-bold text-brand-mid tracking-[0.7px]">Photos</span>
           </div>
-        )}
+          <PhotoGallery
+            jobId={jobId!}
+            userId={userId!}
+            photos={photos}
+            onPhotosChange={refresh}
+            onCapture={capturePhotoAdded}
+            editable={editable}
+          />
+        </div>
 
-        {customer.address && (
-          <div className="mb-4">
-            <MapPreview address={customer.address} />
+        {/* Simple materials cost — Dave's own cost tracking, not part of invoice */}
+        <div className="mb-5">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-micro font-bold text-brand-mid tracking-[0.7px]">Materials cost</span>
+            <span className="text-sm font-bold text-brand-black">£{materialsTotal.toFixed(2)}</span>
           </div>
-        )}
-
-        {/* Info card */}
-        <div className="border border-brand-border rounded-lg overflow-hidden mb-4 divide-y divide-brand-surface">
-          <div className="flex justify-between items-center px-4 py-3">
-            <span className="text-xs text-brand-muted">Date &amp; time</span>
-            <span className="text-xs font-medium text-brand-black text-right">
-              {formatDateTimeRange(job.scheduled_start, job.scheduled_end)}
-            </span>
-          </div>
-          <div className="flex justify-between items-center px-4 py-3">
-            <span className="text-xs text-brand-muted">Payment terms</span>
-            <span className="text-xs font-medium text-brand-black text-right">
-              {paymentTermsLabel(job.payment_terms)}
-            </span>
-          </div>
-          {job.payment_terms === 'deposit' && job.deposit_pct && (
-            <div className="flex justify-between items-center px-4 py-3">
-              <span className="text-xs text-brand-muted">Deposit</span>
-              <span className="text-xs font-medium text-brand-black text-right">
-                {job.deposit_pct}% (£{((job.deposit_pct / 100) * total).toFixed(2)})
-              </span>
+          {editable ? (
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-base text-brand-muted">£</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                defaultValue={materialsTotal > 0 ? materialsTotal.toFixed(2) : ''}
+                placeholder="Total spent at merchant"
+                className="w-full h-11 pl-7 pr-3 border border-brand-border rounded-lg text-base text-brand-black placeholder:text-brand-muted placeholder:italic outline-none focus:border-brand-black"
+                onBlur={(e) => handleSaveMaterialsCost(e.target.value)}
+              />
             </div>
-          )}
+          ) : materialsTotal > 0 ? (
+            <p className="text-sm text-brand-muted">Recorded for your reference</p>
+          ) : null}
         </div>
-
-        {/* Invoice items */}
-        <div className="flex items-center justify-between mb-2.5">
-          <span className="text-micro font-bold text-brand-mid uppercase tracking-[0.7px]">Quote items</span>
-        </div>
-        <div className="border border-brand-border rounded-lg overflow-hidden mb-5">
-          {lineItems.map((item) => (
-            <InvoiceItemRow
-              key={item.id}
-              item={item}
-              showRemove={false}
-            />
-          ))}
-          <InvoiceTotalRow total={total} />
-        </div>
-      </div>
+      </>
     );
   };
 
-  const renderInProgressBody = () => {
-    if (!job) return null;
+  const renderEnquiryBody = () => {
+    if (!job || !customer) return null;
+    const missedCallLog = eventLogs.find((log) => log.description.includes('Missed call logged'));
+    const isDraft = lineItems.length > 0 && job.title !== 'Missed call';
+    const total = jobTotal(lineItems);
+
     return (
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-2">
+        {/* What we know */}
+        <div className="border border-brand-border rounded-lg p-4 mb-5">
+          <div className="text-micro font-bold tracking-[0.5px] text-brand-muted mb-3">
+            What we know
+          </div>
+          <div className="flex items-center gap-2 mb-2">
+            <Phone size={14} className="text-brand-muted" />
+            <span className="text-sm text-brand-dark font-medium">{customer.phone || 'No phone'}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Clock size={14} className="text-brand-muted" />
+            <span className="text-sm text-brand-dark">
+              {missedCallLog ? formatLogTime(missedCallLog.created_at) : 'Just now'}
+            </span>
+          </div>
+        </div>
+
+        {/* Draft quote: show line items */}
+        {isDraft && (
+          <div className="border border-brand-border rounded-lg p-4 mb-5">
+            <div className="text-micro font-bold tracking-[0.5px] text-brand-muted mb-3">
+              Draft quote
+            </div>
+            <div className="space-y-2">
+              {lineItems.map((item) => (
+                <div key={item.id} className="flex justify-between items-center py-1 border-b border-brand-borderLight last:border-b-0">
+                  <span className="text-sm text-brand-dark flex-1 pr-2">{item.description}</span>
+                  <span className="text-sm font-bold text-brand-black">£{item.amount.toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-between items-center mt-3 pt-2 border-t border-brand-border">
+              <span className="text-sm font-bold text-brand-black">Total</span>
+              <span className="text-lg font-extrabold text-brand-black">£{total.toFixed(2)}</span>
+            </div>
+            <div className="mt-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
+              <p className="text-sm text-amber-800">
+                <span className="font-bold">Not sent yet.</span> Tap "Continue quote" below to finish and send.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Next steps */}
+        {!isDraft && (
+          <div className="border border-brand-border rounded-lg p-4 mb-5">
+            <div className="text-micro font-bold tracking-[0.5px] text-brand-muted mb-3">
+              Next steps
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm text-brand-dark">
+                <span className="w-5 h-5 rounded-full bg-brand-surface flex items-center justify-center text-xs font-bold text-brand-muted shrink-0">1</span>
+                Set a job title and time
+              </div>
+              <div className="flex items-center gap-2 text-sm text-brand-dark">
+                <span className="w-5 h-5 rounded-full bg-brand-surface flex items-center justify-center text-xs font-bold text-brand-muted shrink-0">2</span>
+                Add line items to the quote
+              </div>
+              <div className="flex items-center gap-2 text-sm text-brand-dark">
+                <span className="w-5 h-5 rounded-full bg-brand-surface flex items-center justify-center text-xs font-bold text-brand-muted shrink-0">3</span>
+                Send the quote to the customer
+              </div>
+            </div>
+          </div>
+        )}
+
+        {renderPhotosAndMaterials(true)}
 
         {/* Work log */}
         <div className="mb-5">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-micro font-bold text-brand-mid uppercase tracking-[0.7px]">Work log</span>
+            <span className="text-micro font-bold text-brand-mid tracking-[0.7px]">Work log</span>
           </div>
           {eventLogs.length === 0 ? (
-            <p className="text-xs text-brand-muted italic py-2">No work logged yet</p>
+            <p className="text-sm text-brand-muted italic py-2">No work logged</p>
           ) : (
             <div>
               {eventLogs.map((log) => (
@@ -910,11 +1103,11 @@ export default function JobDetail() {
                   <span className="text-label text-brand-muted whitespace-nowrap shrink-0 pt-0.5 min-w-[46px]">
                     {formatLogTime(log.created_at)}
                   </span>
-                  <span className="text-xs text-brand-dark flex-1 leading-relaxed">
+                  <span className="text-sm text-brand-dark flex-1 leading-relaxed">
                     {log.description}
                   </span>
                   {log.amount !== undefined && log.amount > 0 && (
-                    <span className="text-xxs font-bold text-status-green shrink-0 whitespace-nowrap">
+                    <span className="text-sm font-bold text-status-green shrink-0 whitespace-nowrap">
                       +£{log.amount.toFixed(2)}
                     </span>
                   )}
@@ -923,27 +1116,156 @@ export default function JobDetail() {
             </div>
           )}
         </div>
+      </div>
+    );
+  };
 
-        {/* Private Notes */}
-        {hasPrivateNotes && (
-          <div className="mb-5">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-micro font-bold text-brand-mid uppercase tracking-[0.7px]">Private notes</span>
+  const renderEnquiryFooter = () => {
+    const isDraft = job && lineItems.length > 0 && job.title !== 'Missed call';
+    const isMissedCall = job?.title === 'Missed call';
+
+    return (
+      <div className="shrink-0 z-30 bg-[var(--app-shell-bg)] border-t border-brand-borderLight px-4 py-2 pb-[calc(4px_+_env(safe-area-inset-bottom))]">
+        {isDraft ? (
+          <>
+            <Button
+              variant="primary"
+              onClick={() => navigate('/quote', { state: { jobId: job?.id, customerId: job?.customer_id, entryPoint: 'task' } })}
+            >
+              Continue quote →
+            </Button>
+            <div className="flex gap-2 mt-2">
+              <button
+                onClick={() => {
+                  if (customer?.phone) window.open(`tel:${customer.phone}`, '_self');
+                }}
+                className="flex-1 h-11 flex items-center justify-center gap-1.5 rounded-xl bg-white border border-brand-border text-sm font-semibold text-brand-black cursor-pointer"
+              >
+                <Phone size={14} className="text-brand-mid" />
+                Call
+              </button>
+              <button
+                onClick={() => setSheet('cancel')}
+                className="flex-1 h-11 flex items-center justify-center rounded-xl border border-red-200 text-sm font-semibold text-status-error cursor-pointer"
+              >
+                Delete
+              </button>
             </div>
-            <div className="border border-brand-border rounded-lg p-3.5">
-              {noteLogs.map((log) => (
-                <div key={log.id} className="flex gap-2.5 py-1.5 border-b border-brand-surface last:border-b-0 items-start">
-                  <span className="text-label text-brand-muted whitespace-nowrap shrink-0 min-w-[46px]">{formatLogTime(log.created_at)}</span>
-                  <span className="text-xs text-brand-dark flex-1 leading-relaxed">{log.description}</span>
+          </>
+        ) : (
+          <>
+            <Button
+              variant="primary"
+              onClick={() => navigate('/quote', { state: { jobId: job?.id, customerId: job?.customer_id, entryPoint: 'task' } })}
+            >
+              {isMissedCall ? 'Create quote' : 'Create quote'}
+            </Button>
+            <div className="flex gap-2 mt-2">
+              <button
+                onClick={() => {
+                  if (customer?.phone) window.open(`tel:${customer.phone}`, '_self');
+                }}
+                className="flex-1 h-11 flex items-center justify-center gap-1.5 rounded-xl bg-white border border-brand-border text-sm font-semibold text-brand-black cursor-pointer"
+              >
+                <Phone size={14} className="text-brand-mid" />
+                {isMissedCall ? 'Call back' : 'Call'}
+              </button>
+              <button
+                onClick={() => navigate('/', { replace: true })}
+                className="flex-1 h-11 flex items-center justify-center rounded-xl border border-brand-border text-sm font-semibold text-brand-muted cursor-pointer"
+              >
+                Go Home
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
+
+  const renderBookedBody = () => {
+    if (!job || !customer) return null;
+    return (
+      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-2">
+        {/* Location card — leads */}
+        <div className="mb-5">
+          <div className="text-micro font-bold text-brand-mid tracking-[0.7px] mb-2.5">Location</div>
+          <div className="border border-brand-border rounded-xl overflow-hidden bg-white">
+            {customer.address && (
+              <>
+                <div className="relative">
+                  <MapPreview address={customer.address} />
                 </div>
-              ))}
+                <div className="flex items-center justify-between px-4 py-3 border-t border-brand-borderLight">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <MapPin size={16} className="text-brand-muted shrink-0" />
+                    <span className="text-sm text-brand-dark font-medium truncate">{customer.address}</span>
+                  </div>
+                  <button
+                    onClick={() =>
+                      window.open(`https://maps.google.com/maps?daddr=${encodeURIComponent(customer.address || '')}`, '_blank')
+                    }
+                    className="flex items-center gap-1 text-sm font-semibold text-brand-black shrink-0 ml-2"
+                  >
+                    <Navigation size={14} />
+                    Navigate
+                  </button>
+                </div>
+              </>
+            )}
+            {!customer.address && (
+              <div className="px-4 py-3 text-sm text-brand-muted">No address set</div>
+            )}
+          </div>
+        </div>
+
+        {/* Schedule card */}
+        <div className="mb-5">
+          <div className="text-micro font-bold text-brand-mid tracking-[0.7px] mb-2.5">Schedule</div>
+          <div className="border border-brand-border rounded-xl overflow-hidden bg-white divide-y divide-brand-borderLight">
+            <div className="flex justify-between items-center px-4 py-3">
+              <span className="text-sm text-brand-muted">Date</span>
+              <span className="text-sm font-medium text-brand-black text-right">
+                {job.scheduled_start ? formatShortDate(new Date(job.scheduled_start)) : 'Not set'}
+              </span>
+            </div>
+            <div className="flex justify-between items-center px-4 py-3">
+              <span className="text-sm text-brand-muted">Arrival window</span>
+              <span className="text-sm font-medium text-brand-black text-right">
+                {job.scheduled_start ? formatTime(new Date(job.scheduled_start)) : '—'}
+                {job.scheduled_end ? ` – ${formatTime(new Date(job.scheduled_end))}` : ''}
+              </span>
+            </div>
+            {confirmedAt && (
+              <div className="flex justify-between items-center px-4 py-3">
+                <span className="text-sm text-brand-muted">Status</span>
+                <div className="flex items-center gap-1.5">
+                  <Check size={16} className="text-brand-black shrink-0" />
+                  <span className="text-sm font-medium text-brand-black">Confirmed</span>
+                  <span className="text-sm text-brand-black ml-1">{formatShortDate(new Date(confirmedAt))}</span>
+                </div>
+              </div>
+            )}
+            {job.payment_terms === 'deposit' && job.deposit_pct && (
+              <div className="flex justify-between items-center px-4 py-3">
+                <span className="text-sm text-brand-muted">Deposit</span>
+                <span className="text-sm font-medium text-brand-black text-right">
+                  {job.deposit_pct}% (£{((job.deposit_pct / 100) * total).toFixed(2)})
+                </span>
+              </div>
+            )}
+            <div className="flex justify-between items-center px-4 py-3">
+              <span className="text-sm text-brand-muted">Payment terms</span>
+              <span className="text-sm font-medium text-brand-black text-right">
+                {paymentTermsLabel(job.payment_terms)}
+              </span>
             </div>
           </div>
-        )}
+        </div>
 
         {/* Invoice items */}
         <div className="flex items-center justify-between mb-2.5">
-          <span className="text-micro font-bold text-brand-mid uppercase tracking-[0.7px]">Invoice items</span>
+          <span className="text-micro font-bold text-brand-mid tracking-[0.7px]">Quote items</span>
         </div>
         <div className="border border-brand-border rounded-lg overflow-hidden mb-5">
           {lineItems.map((item) => (
@@ -956,21 +1278,89 @@ export default function JobDetail() {
           <InvoiceTotalRow total={total} />
         </div>
 
-        {/* Quick actions below invoice */}
-        <div
-          onClick={() => setSheet('add_note')}
-          className="min-h-13 flex items-center gap-2 px-3.5 border border-brand-border rounded-lg mb-2 cursor-pointer bg-white"
+        {renderPhotosAndMaterials(true)}
+
+        {/* Secondary action */}
+        <button
+          onClick={handleNotHome}
+          className="w-full text-center text-sm text-brand-muted py-2 mb-2 underline underline-offset-2 cursor-pointer"
         >
-          <span className="text-xs font-semibold text-brand-mid">+ Add note</span>
-          <span className="text-label text-brand-muted">Private</span>
+          Customer not home?
+        </button>
+      </div>
+    );
+  };
+
+  const renderInProgressBody = () => {
+    if (!job || !customer) return null;
+    return (
+      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-2">
+        {/* Running state */}
+        <div className="mb-5">
+          <div className="text-micro font-bold text-brand-mid tracking-[0.7px] mb-2.5">Running</div>
+          <div className="border border-brand-border rounded-xl overflow-hidden bg-white divide-y divide-brand-borderLight">
+            <div className="flex justify-between items-center px-4 py-3">
+              <span className="text-sm text-brand-muted">Started</span>
+              <span className="text-sm font-medium text-brand-black text-right">
+                {job.actual_start
+                  ? formatTime(new Date(job.actual_start))
+                  : '—'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between px-4 py-3 bg-status-greenBg">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-sm font-medium text-status-green">In progress</span>
+              </div>
+              <span className="text-sm font-bold text-status-green font-mono">
+                {formatElapsed(job.actual_start, elapsedNow)}
+              </span>
+            </div>
+          </div>
         </div>
-        <div
-          onClick={() => setSheet('add_charge')}
-          className="min-h-13 flex items-center gap-2 px-3.5 border border-brand-border rounded-lg mb-5 cursor-pointer bg-white"
-        >
-          <span className="text-xs font-semibold text-brand-mid">+ Add charge</span>
-          <span className="text-label text-brand-muted">Added to invoice</span>
+
+        {/* Location — icon container + two-line address */}
+        <div className="mb-5">
+          <div className="text-micro font-bold text-brand-mid tracking-[0.7px] mb-2.5">Location</div>
+          <div className="border border-brand-border rounded-xl px-4 py-3 bg-white flex items-start gap-3">
+            <div className="w-10 h-10 rounded-lg bg-brand-surface flex items-center justify-center shrink-0 mt-0.5">
+              <MapPin size={18} className="text-brand-muted" />
+            </div>
+            <div className="flex-1 min-w-0">
+              {(() => {
+                const addr = customer.address || 'No address set';
+                const parts = addr.split(',');
+                if (parts.length > 1) {
+                  return (
+                    <>
+                      <div className="text-sm font-medium text-brand-dark">{parts[0].trim()}</div>
+                      <div className="text-sm text-brand-muted">{parts.slice(1).join(',').trim()}</div>
+                    </>
+                  );
+                }
+                return <div className="text-sm font-medium text-brand-dark">{addr}</div>;
+              })()}
+            </div>
+          </div>
         </div>
+
+        {/* Invoice items */}
+        <div className="flex items-center justify-between mb-2.5">
+          <span className="text-micro font-bold text-brand-mid tracking-[0.7px]">
+            Quote · {paymentTermsLabel(job.payment_terms).toLowerCase()}
+          </span>
+        </div>
+        <div className="border border-brand-border rounded-lg overflow-hidden mb-5">
+          {lineItems.map((item) => (
+            <InvoiceItemRow
+              key={item.id}
+              item={item}
+              showRemove={false}
+            />
+          ))}
+          <InvoiceTotalRow total={total} />
+        </div>
+        {renderPhotosAndMaterials(true)}
       </div>
     );
   };
@@ -982,37 +1372,37 @@ export default function JobDetail() {
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-2">
 
         <div className="mb-4">
-          <div className="text-micro font-bold text-brand-mid uppercase tracking-[0.7px] mb-2.5">
+          <div className="text-micro font-bold text-brand-mid tracking-[0.7px] mb-2.5">
             Quote
           </div>
           <div className="border border-brand-border rounded-xl overflow-hidden">
             <div className="px-4 pt-3.5 pb-2.5 border-b border-brand-borderLight">
               <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xxs font-medium text-brand-muted">{job?.quote_number || 'Quote'}</span>
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-[3px] rounded-full bg-status-blueBg text-status-blue text-micro font-bold uppercase tracking-[0.4px]">
+                <span className="text-sm font-medium text-brand-muted">{job?.quote_number || 'Quote'}</span>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-[3px] rounded-full bg-status-blueBg text-status-blue text-micro font-bold tracking-[0.4px]">
                   <span className="w-[5px] h-[5px] rounded-full bg-status-blue" />
                   Quoted
                 </span>
               </div>
               <div className="text-lg font-bold text-brand-black">{job.title}</div>
-              <div className="text-xs text-brand-mid mt-0.5">{customer.name}</div>
+              <div className="text-sm text-brand-mid mt-0.5">{customer.name}</div>
             </div>
             <div className="border-b border-brand-borderLight">
               <div className="flex justify-between items-center px-4 py-2.5 border-b border-brand-surface">
-                <span className="text-xs text-brand-muted">Date &amp; time</span>
-                <span className="text-xs font-medium text-brand-black text-right">
+                <span className="text-sm text-brand-muted">Date &amp; time</span>
+                <span className="text-sm font-medium text-brand-black text-right">
                   {formatDateTimeRange(job.scheduled_start, job.scheduled_end)}
                 </span>
               </div>
               <div className="flex justify-between items-center px-4 py-2.5 border-b border-brand-surface">
-                <span className="text-xs text-brand-muted">Payment</span>
-                <span className="text-xs font-medium text-brand-black text-right">
+                <span className="text-sm text-brand-muted">Payment</span>
+                <span className="text-sm font-medium text-brand-black text-right">
                   {paymentTermsLabel(job.payment_terms)}
                 </span>
               </div>
               <div className="flex justify-between items-center px-4 py-2.5">
-                <span className="text-xs text-brand-muted">Valid until</span>
-                <span className="text-xs font-medium text-brand-black text-right">
+                <span className="text-sm text-brand-muted">Valid until</span>
+                <span className="text-sm font-medium text-brand-black text-right">
                   {job.quote_expires_at
                     ? new Date(job.quote_expires_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
                     : '—'}
@@ -1021,7 +1411,7 @@ export default function JobDetail() {
             </div>
             <div className="px-4 pt-3 pb-0">
               {lineItems.map((item, idx) => (
-                <div key={item.id} className={`flex justify-between py-1.5 text-xs text-brand-dark ${idx < lineItems.length - 1 ? 'border-b border-brand-surface' : ''}`}>
+                <div key={item.id} className={`flex justify-between py-1.5 text-sm text-brand-dark ${idx < lineItems.length - 1 ? 'border-b border-brand-surface' : ''}`}>
                   <span>{item.description}</span>
                   <span className="font-medium text-brand-black">£{item.amount.toFixed(2)}</span>
                 </div>
@@ -1031,94 +1421,63 @@ export default function JobDetail() {
               <span className="text-base font-bold text-brand-black">Total</span>
               <span className="text-title font-extrabold text-brand-black">£{total.toFixed(2)}</span>
             </div>
-            <div className="px-4 py-3 border-t border-brand-borderLight text-xxs text-brand-muted leading-relaxed">
+            <div className="px-4 py-3 border-t border-brand-borderLight text-sm text-brand-muted leading-relaxed">
               {profile?.business_name || 'Your business'}
             </div>
           </div>
         </div>
+        {renderPhotosAndMaterials(true)}
       </div>
     );
   };
 
   const renderBookedFooter = () => (
-    <div className="sticky bottom-0 z-30 bg-white border-t border-brand-borderLight shadow-sheet">
-      <div className="flex flex-col gap-2 px-4 py-3 pb-[calc(32px_+_env(safe-area-inset-bottom))]">
-        <Button variant="primary" onClick={handleStartJob}>
-          Start job
-        </Button>
-        <Button variant="secondary" onClick={() => navigate('/', { replace: true })}>
-          Go Home
-        </Button>
-        <button
-          onClick={() => {
-            if (job) {
-              setEditTitle(job.title);
-              setEditDate(toDateValue(job.scheduled_start));
-              setEditStartTime(toTimeValue(job.scheduled_start));
-              setEditEndTime(toTimeValue(job.scheduled_end));
-              setEditNotes(job.notes || '');
-              setSheet('edit_details');
-            }
-          }}
-          className="min-h-11 text-xs text-brand-mid cursor-pointer underline underline-offset-2 text-center"
-        >
-          Edit details
-        </button>
-      </div>
+    <div className="shrink-0 z-30 bg-[var(--app-shell-bg)] border-t border-brand-borderLight px-4 py-2 pb-[calc(4px_+_env(safe-area-inset-bottom))]">
+      <Button variant="primary" onClick={handleStartJob}>
+        Start job
+      </Button>
     </div>
   );
 
   const renderQuotedFooter = () => (
-    <div className="sticky bottom-0 z-30 bg-white border-t border-brand-borderLight shadow-sheet">
-      <div className="flex flex-col gap-2 px-4 py-3 pb-[calc(32px_+_env(safe-area-inset-bottom))]">
-        <Button variant="primary" onClick={handleMarkAsBooked}>
-          Mark as Booked
-        </Button>
-      </div>
+    <div className="shrink-0 z-30 bg-[var(--app-shell-bg)] border-t border-brand-borderLight px-4 py-2 pb-[calc(4px_+_env(safe-area-inset-bottom))]">
+      <Button variant="primary" onClick={handleMarkAsBooked}>
+        Mark as Booked
+      </Button>
     </div>
   );
 
   const renderInProgressFooter = () => (
-    <div className="sticky bottom-0 z-30 bg-white border-t border-brand-borderLight shadow-sheet">
-      <div className="flex flex-col gap-2 px-4 py-3 pb-[calc(32px_+_env(safe-area-inset-bottom))]">
-        <Button variant="primary" onClick={() => setSheet('mark_done')}>
-          Mark Done
-        </Button>
-        <button
-          onClick={handleNotHome}
-          className="min-h-11 text-xxs text-brand-muted cursor-pointer underline underline-offset-2 text-center"
-        >
-          Customer not home?
-        </button>
-      </div>
+    <div className="shrink-0 z-30 bg-[var(--app-shell-bg)] border-t border-brand-borderLight px-4 py-2 pb-[calc(4px_+_env(safe-area-inset-bottom))]">
+      <Button variant="primary" onClick={() => setSheet('mark_done')}>
+        <Check size={18} className="mr-2" />
+        Complete & take payment
+      </Button>
     </div>
   );
 
   const renderAwaitingPaymentBody = () => {
     if (!job || !customer) return null;
-    const days = job.invoice_sent_at
-      ? Math.floor((Date.now() - new Date(job.invoice_sent_at).getTime()) / (1000 * 60 * 60 * 24))
-      : 0;
 
     return (
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-2">
 
         {/* Amount card */}
         <div className="border border-amber-200 bg-status-amberBg rounded-xl px-5 py-6 text-center mb-5">
-          <div className="text-label font-bold uppercase tracking-[0.5px] text-status-amber mb-2">
+          <div className="text-label font-bold tracking-[0.5px] text-status-amber mb-2">
             Total due
           </div>
           <div className="text-[36px] font-extrabold text-brand-black tracking-tight">
             £{total.toFixed(2)}
           </div>
-          <div className="text-xxs text-status-amber mt-2">
-            {job.invoice_sent_at ? `Invoice sent · ${days} day${days !== 1 ? 's' : ''} ago` : 'Payment pending'}
+          <div className="text-sm text-status-amber mt-2">
+            {job.invoice_sent_at ? `Invoice sent · ${formatInvoiceSent(job.invoice_sent_at)}` : 'Payment pending'}
           </div>
         </div>
 
         {/* Invoice items (locked) */}
         <div className="flex items-center justify-between mb-2.5">
-          <span className="text-micro font-bold text-brand-mid uppercase tracking-[0.7px]">Invoice items</span>
+          <span className="text-micro font-bold text-brand-mid tracking-[0.7px]">Invoice items</span>
         </div>
         <div className="border border-brand-border rounded-lg overflow-hidden mb-5">
           {lineItems.map((item) => (
@@ -1126,6 +1485,7 @@ export default function JobDetail() {
           ))}
           <InvoiceTotalRow total={total} />
         </div>
+        {renderPhotosAndMaterials(false)}
       </div>
     );
   };
@@ -1138,7 +1498,7 @@ export default function JobDetail() {
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-2">
 
         <div className="border border-brand-border rounded-lg p-4 mb-5">
-          <div className="text-micro font-bold uppercase tracking-[0.5px] text-brand-muted mb-2">
+          <div className="text-micro font-bold tracking-[0.5px] text-brand-muted mb-2">
             What happened
           </div>
           <div className="text-sm text-brand-dark leading-relaxed">
@@ -1150,14 +1510,18 @@ export default function JobDetail() {
   };
 
   const renderNoShowFooter = () => (
-    <div className="sticky bottom-0 z-30 bg-white border-t border-brand-borderLight shadow-sheet">
-      <div className="flex flex-col gap-2 px-4 py-3 pb-[calc(32px_+_env(safe-area-inset-bottom))]">
-        <Button variant="primary" onClick={() => setSheet('reschedule')}>
-          Reschedule
-        </Button>
-        <Button variant="secondary" onClick={() => setSheet('callout_charge')}>
-          Charge callout
-        </Button>
+    <div className="shrink-0 z-30 bg-[var(--app-shell-bg)] border-t border-brand-borderLight px-4 py-2 pb-[calc(4px_+_env(safe-area-inset-bottom))]">
+      <div className="flex gap-2">
+        <div className="flex-1">
+          <Button variant="primary" onClick={() => setSheet('reschedule')}>
+            Reschedule
+          </Button>
+        </div>
+        <div className="flex-1">
+          <Button variant="secondary" onClick={() => setSheet('callout_charge')}>
+            Charge callout
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -1170,26 +1534,36 @@ export default function JobDetail() {
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-2">
 
         <div className="border border-brand-border rounded-lg p-4 mb-5">
-          <div className="text-micro font-bold uppercase tracking-[0.5px] text-brand-muted mb-2">
+          <div className="text-micro font-bold tracking-[0.5px] text-brand-muted mb-2">
             Payment record
           </div>
           <div className="text-md font-bold text-status-green mb-1">
             Paid
           </div>
-          <div className="text-xs text-brand-mid mb-0.5">
+          <div className="text-sm text-brand-mid mb-0.5">
             {lastPayment?.method === 'cash' ? 'Cash' : lastPayment?.method === 'bank_transfer' ? 'Bank Transfer' : 'Other'} · £{total.toFixed(2)}
           </div>
-          <div className="text-xxs text-brand-muted">
-            Recorded {job.actual_end ? formatShortDate(new Date(job.actual_end)) : '—'}
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-brand-muted">
+              Recorded {job.actual_end ? formatShortDate(new Date(job.actual_end)) : '—'}
+            </div>
+            <button
+              onClick={() => setSheet('edit_payment_method')}
+              className="text-sm font-medium text-brand-mid underline underline-offset-2 cursor-pointer active:text-brand-dark"
+            >
+              Change method
+            </button>
           </div>
         </div>
 
+        {renderPhotosAndMaterials(false)}
+
         <div className="mb-5">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-micro font-bold text-brand-mid uppercase tracking-[0.7px]">Work log</span>
+            <span className="text-micro font-bold text-brand-mid tracking-[0.7px]">Work log</span>
           </div>
           {eventLogs.length === 0 ? (
-            <p className="text-xs text-brand-muted italic py-2">No work logged</p>
+            <p className="text-sm text-brand-muted italic py-2">No work logged</p>
           ) : (
             <div>
               {visibleLogs.map((log) => (
@@ -1197,11 +1571,11 @@ export default function JobDetail() {
                   <span className="text-label text-brand-muted whitespace-nowrap shrink-0 pt-0.5 min-w-[46px]">
                     {formatLogTime(log.created_at)}
                   </span>
-                  <span className="text-xs text-brand-dark flex-1 leading-relaxed">
+                  <span className="text-sm text-brand-dark flex-1 leading-relaxed">
                     {log.description}
                   </span>
                   {log.amount !== undefined && log.amount > 0 && (
-                    <span className="text-xxs font-bold text-status-green shrink-0 whitespace-nowrap">
+                    <span className="text-sm font-bold text-status-green shrink-0 whitespace-nowrap">
                       +£{log.amount.toFixed(2)}
                     </span>
                   )}
@@ -1210,7 +1584,7 @@ export default function JobDetail() {
               {eventLogs.length > 3 && (
                 <button
                   onClick={() => setWorkLogExpanded(!workLogExpanded)}
-                  className="text-xxs text-brand-mid underline underline-offset-2 cursor-pointer mt-1"
+                  className="text-sm text-brand-mid underline underline-offset-2 cursor-pointer mt-1"
                 >
                   {workLogExpanded ? 'Show less' : `Show ${eventLogs.length - 3} more`}
                 </button>
@@ -1223,13 +1597,13 @@ export default function JobDetail() {
         {hasPrivateNotes && (
           <div className="mb-5">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-micro font-bold text-brand-mid uppercase tracking-[0.7px]">Private notes</span>
+              <span className="text-micro font-bold text-brand-mid tracking-[0.7px]">Private notes</span>
             </div>
             <div className="border border-brand-border rounded-lg p-3.5">
               {noteLogs.map((log) => (
                 <div key={log.id} className="flex gap-2.5 py-1.5 border-b border-brand-surface last:border-b-0 items-start">
                   <span className="text-label text-brand-muted whitespace-nowrap shrink-0 min-w-[46px]">{formatLogTime(log.created_at)}</span>
-                  <span className="text-xs text-brand-dark flex-1 leading-relaxed">{log.description}</span>
+                  <span className="text-sm text-brand-dark flex-1 leading-relaxed">{log.description}</span>
                 </div>
               ))}
             </div>
@@ -1237,7 +1611,7 @@ export default function JobDetail() {
         )}
 
         <div className="flex items-center justify-between mb-2.5">
-          <span className="text-micro font-bold text-brand-mid uppercase tracking-[0.7px]">Invoice items</span>
+          <span className="text-micro font-bold text-brand-mid tracking-[0.7px]">Invoice items</span>
         </div>
         <div className="border border-brand-border rounded-lg overflow-hidden mb-5">
           {lineItems.map((item) => (
@@ -1255,7 +1629,7 @@ export default function JobDetail() {
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-2">
 
         <div className="border border-brand-border rounded-lg p-4 mb-5">
-          <div className="text-micro font-bold uppercase tracking-[0.5px] text-brand-muted mb-2">
+          <div className="text-micro font-bold tracking-[0.5px] text-brand-muted mb-2">
             Reason
           </div>
           <div className="text-sm text-brand-dark leading-relaxed">
@@ -1264,19 +1638,20 @@ export default function JobDetail() {
         </div>
 
         <div className="border border-brand-border rounded-lg p-4 mb-5">
-          <div className="text-micro font-bold uppercase tracking-[0.5px] text-brand-muted mb-2">
+          <div className="text-micro font-bold tracking-[0.5px] text-brand-muted mb-2">
             Notes
           </div>
           {job.notes ? (
-            <div className="text-xs text-brand-dark leading-relaxed">
+            <div className="text-sm text-brand-dark leading-relaxed">
               {job.notes}
             </div>
           ) : (
-            <p className="text-xs text-brand-muted italic leading-relaxed">
+            <p className="text-sm text-brand-muted italic leading-relaxed">
               Tap to add a note about this cancellation…
             </p>
           )}
         </div>
+        {renderPhotosAndMaterials(false)}
       </div>
     );
   };
@@ -1287,23 +1662,25 @@ export default function JobDetail() {
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-2">
 
         <div className="border border-brand-border rounded-lg p-4 mb-5">
-          <div className="text-micro font-bold uppercase tracking-[0.5px] text-brand-muted mb-2">
+          <div className="text-micro font-bold tracking-[0.5px] text-brand-muted mb-2">
             Amount written off
           </div>
           <div className="text-hero font-extrabold text-brand-black my-1 tracking-[-0.5px]">
             £{total.toFixed(2)}
           </div>
-          <div className="text-xs text-brand-muted mt-2">
+          <div className="text-sm text-brand-muted mt-2">
             Logged as bad debt · not counted in income
           </div>
         </div>
 
+        {renderPhotosAndMaterials(false)}
+
         <div className="mb-5">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-micro font-bold text-brand-mid uppercase tracking-[0.7px]">Work log</span>
+            <span className="text-micro font-bold text-brand-mid tracking-[0.7px]">Work log</span>
           </div>
           {eventLogs.length === 0 ? (
-            <p className="text-xs text-brand-muted italic py-2">No work logged</p>
+            <p className="text-sm text-brand-muted italic py-2">No work logged</p>
           ) : (
             <div>
               {eventLogs.map((log) => (
@@ -1311,11 +1688,11 @@ export default function JobDetail() {
                   <span className="text-label text-brand-muted whitespace-nowrap shrink-0 pt-0.5 min-w-[46px]">
                     {formatLogTime(log.created_at)}
                   </span>
-                  <span className="text-xs text-brand-dark flex-1 leading-relaxed">
+                  <span className="text-sm text-brand-dark flex-1 leading-relaxed">
                     {log.description}
                   </span>
                   {log.amount !== undefined && log.amount > 0 && (
-                    <span className="text-xxs font-bold text-status-green shrink-0 whitespace-nowrap">
+                    <span className="text-sm font-bold text-status-green shrink-0 whitespace-nowrap">
                       +£{log.amount.toFixed(2)}
                     </span>
                   )}
@@ -1329,13 +1706,13 @@ export default function JobDetail() {
         {hasPrivateNotes && (
           <div className="mb-5">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-micro font-bold text-brand-mid uppercase tracking-[0.7px]">Private notes</span>
+              <span className="text-micro font-bold text-brand-mid tracking-[0.7px]">Private notes</span>
             </div>
             <div className="border border-brand-border rounded-lg p-3.5">
               {noteLogs.map((log) => (
                 <div key={log.id} className="flex gap-2.5 py-1.5 border-b border-brand-surface last:border-b-0 items-start">
                   <span className="text-label text-brand-muted whitespace-nowrap shrink-0 min-w-[46px]">{formatLogTime(log.created_at)}</span>
-                  <span className="text-xs text-brand-dark flex-1 leading-relaxed">{log.description}</span>
+                  <span className="text-sm text-brand-dark flex-1 leading-relaxed">{log.description}</span>
                 </div>
               ))}
             </div>
@@ -1347,20 +1724,18 @@ export default function JobDetail() {
   };
 
   const renderAwaitingPaymentFooter = () => (
-    <div className="sticky bottom-0 z-30 bg-white border-t border-brand-borderLight shadow-sheet">
-      <div className="flex flex-col gap-2 px-4 py-3 pb-[calc(32px_+_env(safe-area-inset-bottom))]">
-        <Button variant="primary" onClick={() => setSheet('mark_paid')}>
-          Mark as Paid
-        </Button>
-        <Button variant="secondary" onClick={() => setSheet('send_reminder')}>
-          Send reminder
-        </Button>
-        <button
-          onClick={handleWriteOff}
-          className="min-h-11 text-xxs text-brand-muted cursor-pointer underline underline-offset-2 text-center"
-        >
-          Write off
-        </button>
+    <div className="shrink-0 z-30 bg-[var(--app-shell-bg)] border-t border-brand-borderLight px-4 py-2 pb-[calc(4px_+_env(safe-area-inset-bottom))]">
+      <div className="flex gap-2">
+        <div className="flex-1">
+          <Button variant="primary" onClick={() => setSheet('mark_paid')}>
+            Mark as Paid
+          </Button>
+        </div>
+        <div className="flex-1">
+          <Button variant="secondary" onClick={() => setSheet('send_reminder')}>
+            Send reminder
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -1373,17 +1748,23 @@ export default function JobDetail() {
       onClose={() => setSheet(null)}
       title="More options"
     >
-      {(job?.status === 'booked' || job?.status === 'no_show') && (
+      <SheetRow
+        label="Edit details"
+        onTap={() => { setSheet('edit_details'); setEditTitle(job?.title || ''); setEditDate(toDateValue(job?.scheduled_start)); setEditStartTime(toTimeValue(job?.scheduled_start)); setEditEndTime(toTimeValue(job?.scheduled_end)); setEditNotes(job?.notes || ''); setEditAddress(customer?.address || ''); }}
+      />
+      {(job?.status === 'in_progress' || job?.status === 'awaiting_payment') && (
+        <SheetRow
+          label="Change status"
+          onTap={() => setSheet('change_status')}
+        />
+      )}
+      {(job?.status === 'booked' || job?.status === 'in_progress' || job?.status === 'no_show' || job?.status === 'awaiting_payment') && (
         <SheetRow
           label="Cancel job"
-          onTap={() => { setSheet('cancel'); }}
+          onTap={() => setSheet('cancel')}
           variant="destructive"
         />
       )}
-      <SheetRow
-        label="Edit details"
-        onTap={() => { setSheet('edit_details'); setEditTitle(job?.title || ''); setEditDate(toDateValue(job?.scheduled_start)); setEditStartTime(toTimeValue(job?.scheduled_start)); setEditEndTime(toTimeValue(job?.scheduled_end)); setEditNotes(job?.notes || ''); }}
-      />
       <SheetRow
         label="Close"
         onTap={() => setSheet(null)}
@@ -1424,7 +1805,7 @@ export default function JobDetail() {
       subtitle="Added to invoice · visible to customer"
     >
       <div className="mb-3">
-        <label className="block text-micro font-bold uppercase tracking-[0.4px] text-brand-muted mb-1">
+        <label className="block text-micro font-bold tracking-[0.4px] text-brand-muted mb-1">
           Description
         </label>
         <input
@@ -1436,7 +1817,7 @@ export default function JobDetail() {
         />
       </div>
       <div className="mb-4">
-        <label className="block text-micro font-bold uppercase tracking-[0.4px] text-brand-muted mb-1">
+        <label className="block text-micro font-bold tracking-[0.4px] text-brand-muted mb-1">
           Amount
         </label>
         <div className="relative">
@@ -1594,7 +1975,7 @@ export default function JobDetail() {
       subtitle={job && customer ? `${customer.name} · ${job.title}` : undefined}
     >
       <div className="mb-4">
-        <label className="block text-micro font-bold uppercase tracking-[0.4px] text-brand-muted mb-1">
+        <label className="block text-micro font-bold tracking-[0.4px] text-brand-muted mb-1">
           New date & time
         </label>
         <input
@@ -1622,19 +2003,24 @@ export default function JobDetail() {
       subtitle="Charge for arriving when customer wasn't home"
     >
       <div className="mb-3">
-        <label className="block text-micro font-bold uppercase tracking-[0.4px] text-brand-muted mb-1">
+        <label className="block text-micro font-bold tracking-[0.4px] text-brand-muted mb-1">
           Description
         </label>
-        <input
-          type="text"
-          value={calloutDesc}
-          onChange={(e) => setCalloutDesc(e.target.value)}
-          placeholder="e.g. Callout charge"
-          className="w-full h-12 px-3.5 border-2 border-brand-border rounded-lg text-base font-medium text-brand-black placeholder:text-brand-muted outline-none focus:border-brand-black"
-        />
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={calloutDesc}
+            onChange={(e) => setCalloutDesc(e.target.value)}
+            placeholder="e.g. Callout charge"
+            className="flex-1 h-12 px-3.5 border-2 border-brand-border rounded-lg text-base font-medium text-brand-black placeholder:text-brand-muted outline-none focus:border-brand-black"
+          />
+          <VoiceInputButton
+            onResult={(text) => setCalloutDesc((prev) => (prev ? prev + ' ' : '') + text)}
+          />
+        </div>
       </div>
       <div className="mb-4">
-        <label className="block text-micro font-bold uppercase tracking-[0.4px] text-brand-muted mb-1">
+        <label className="block text-micro font-bold tracking-[0.4px] text-brand-muted mb-1">
           Amount
         </label>
         <div className="relative">
@@ -1659,6 +2045,71 @@ export default function JobDetail() {
     </BottomSheet>
   );
 
+  const renderChangeStatusSheet = () => {
+    if (!job) return null;
+    const options: { label: string; value: 'booked' | 'in_progress' | 'awaiting_payment'; icon?: React.ReactNode }[] = [];
+    if (job.status === 'in_progress') {
+      options.push({ label: 'Revert to booked', value: 'booked' });
+      options.push({ label: 'Revert to awaiting payment', value: 'awaiting_payment' });
+    }
+    if (job.status === 'awaiting_payment') {
+      options.push({ label: 'Revert to in progress', value: 'in_progress' });
+    }
+    return (
+      <BottomSheet
+        isOpen={sheet === 'change_status'}
+        onClose={() => setSheet(null)}
+        title="Change job status"
+        subtitle={customer ? `${customer.name} · ${job.title}` : undefined}
+      >
+        {options.map((opt) => (
+          <SheetRow
+            key={opt.value}
+            label={opt.label}
+            onTap={() => handleChangeStatus(opt.value)}
+          />
+        ))}
+        <SheetRow
+          label="Close"
+          onTap={() => setSheet(null)}
+          isLast
+        />
+      </BottomSheet>
+    );
+  };
+
+  const renderEditPaymentMethodSheet = () => {
+    if (!job || payments.length === 0) return null;
+    const lastPayment = payments[payments.length - 1];
+    const methods: { label: string; value: 'cash' | 'bank_transfer' | 'terminal' | 'other' }[] = [
+      { label: 'Cash', value: 'cash' },
+      { label: 'Bank Transfer', value: 'bank_transfer' },
+      { label: 'Terminal (Card)', value: 'terminal' },
+      { label: 'Other', value: 'other' },
+    ];
+    return (
+      <BottomSheet
+        isOpen={sheet === 'edit_payment_method'}
+        onClose={() => setSheet(null)}
+        title="Change payment method"
+        subtitle={`Current: ${lastPayment.method === 'cash' ? 'Cash' : lastPayment.method === 'bank_transfer' ? 'Bank Transfer' : lastPayment.method === 'terminal' ? 'Terminal (Card)' : 'Other'} · £${lastPayment.amount.toFixed(2)}`}
+      >
+        {methods.map((method) => (
+          <SheetRow
+            key={method.value}
+            label={method.label}
+            onTap={() => handleChangePaymentMethod(method.value)}
+          />
+        ))}
+        <SheetRow
+          label="Cancel"
+          onTap={() => setSheet(null)}
+          isLast
+        />
+      </BottomSheet>
+    );
+  };
+
   const renderBookingConfirmationSheet = () => (
     <BottomSheet
       isOpen={sheet === 'booking_confirmation'}
@@ -1667,7 +2118,7 @@ export default function JobDetail() {
     >
       <div className="mb-4">
         <div className="bg-brand-surface border border-brand-border rounded-lg p-3.5">
-          <p className="text-xs text-brand-dark leading-relaxed whitespace-pre-line">{bookingMessage}</p>
+          <p className="text-sm text-brand-dark leading-relaxed whitespace-pre-line">{bookingMessage}</p>
         </div>
       </div>
       <div className="flex flex-col gap-2">
@@ -1697,7 +2148,7 @@ export default function JobDetail() {
       subtitle={customer ? `${customer.name} · ${job?.title}` : undefined}
     >
       <div className="mb-3">
-        <label className="block text-micro font-bold uppercase tracking-[0.4px] text-brand-muted mb-1">
+        <label className="block text-micro font-bold tracking-[0.4px] text-brand-muted mb-1">
           Job title
         </label>
         <input
@@ -1708,7 +2159,19 @@ export default function JobDetail() {
         />
       </div>
       <div className="mb-3">
-        <label className="block text-micro font-bold uppercase tracking-[0.4px] text-brand-muted mb-1">
+        <label className="block text-micro font-bold tracking-[0.4px] text-brand-muted mb-1">
+          Address
+        </label>
+        <textarea
+          value={editAddress}
+          onChange={(e) => setEditAddress(e.target.value)}
+          placeholder="e.g. 12 High Street, London SW1A 1AA"
+          rows={2}
+          className="w-full px-3.5 py-3 border-2 border-brand-border rounded-lg text-base font-medium text-brand-black placeholder:text-brand-muted outline-none focus:border-brand-black resize-none"
+        />
+      </div>
+      <div className="mb-3">
+        <label className="block text-micro font-bold tracking-[0.4px] text-brand-muted mb-1">
           Date
         </label>
         <div className="relative">
@@ -1722,7 +2185,7 @@ export default function JobDetail() {
         </div>
       </div>
       <div className="mb-3">
-        <label className="block text-micro font-bold uppercase tracking-[0.4px] text-brand-muted mb-1">
+        <label className="block text-micro font-bold tracking-[0.4px] text-brand-muted mb-1">
           Start time
         </label>
         <div className="relative">
@@ -1736,7 +2199,7 @@ export default function JobDetail() {
         </div>
       </div>
       <div className="mb-3">
-        <label className="block text-micro font-bold uppercase tracking-[0.4px] text-brand-muted mb-1">
+        <label className="block text-micro font-bold tracking-[0.4px] text-brand-muted mb-1">
           End time <span className="normal-case font-normal tracking-0">(optional)</span>
         </label>
         {!editEndTime ? (
@@ -1765,16 +2228,23 @@ export default function JobDetail() {
         )}
       </div>
       <div className="mb-4">
-        <label className="block text-micro font-bold uppercase tracking-[0.4px] text-brand-muted mb-1">
+        <label className="block text-micro font-bold tracking-[0.4px] text-brand-muted mb-1">
           Notes (private)
         </label>
-        <textarea
-          value={editNotes}
-          onChange={(e) => setEditNotes(e.target.value)}
-          placeholder="Any notes about this job..."
-          rows={3}
-          className="w-full px-3.5 py-3 border-2 border-brand-border rounded-lg text-base font-medium text-brand-black placeholder:text-brand-muted outline-none focus:border-brand-black resize-none"
-        />
+        <div className="relative">
+          <textarea
+            value={editNotes}
+            onChange={(e) => setEditNotes(e.target.value)}
+            placeholder="Any notes about this job..."
+            rows={3}
+            className="w-full px-3.5 py-3 pr-12 border-2 border-brand-border rounded-lg text-base font-medium text-brand-black placeholder:text-brand-muted outline-none focus:border-brand-black resize-none"
+          />
+          <div className="absolute bottom-2 right-2">
+            <VoiceInputButton
+              onResult={(text) => setEditNotes((prev) => (prev ? prev + ' ' : '') + text)}
+            />
+          </div>
+        </div>
       </div>
       <Button variant="primary" onClick={handleEditDetails}>
         Save changes
@@ -1790,7 +2260,7 @@ export default function JobDetail() {
     >
       <div className="mb-4">
         <div className="bg-brand-surface border border-brand-border rounded-lg p-3.5">
-          <p className="text-xs text-brand-dark leading-relaxed whitespace-pre-line">{updateMessage}</p>
+          <p className="text-sm text-brand-dark leading-relaxed whitespace-pre-line">{updateMessage}</p>
         </div>
       </div>
       <div className="flex flex-col gap-2">
@@ -1816,7 +2286,7 @@ export default function JobDetail() {
 
   if (loading) {
     return (
-      <div className="flex flex-col min-h-[100svh]">
+      <div className="flex flex-col h-full">
         <div className="flex-1 flex items-center justify-center">
           <div className="w-8 h-8 border-2 border-brand-border border-t-brand-black rounded-full animate-spin" />
         </div>
@@ -1826,7 +2296,7 @@ export default function JobDetail() {
 
   if (!job || !customer) {
     return (
-      <div className="flex flex-col min-h-[100svh]">
+      <div className="flex flex-col h-full">
         <div className="flex-1 flex items-center justify-center px-4">
           <p className="text-md text-brand-muted text-center">Job not found</p>
         </div>
@@ -1835,9 +2305,10 @@ export default function JobDetail() {
   }
 
   return (
-    <div className="flex flex-col min-h-[100svh] relative">
+    <div className="flex flex-col h-full relative">
       {renderHeader()}
 
+      {job.status === 'enquiry' && renderEnquiryBody()}
       {job.status === 'booked' && renderBookedBody()}
       {job.status === 'in_progress' && renderInProgressBody()}
       {job.status === 'awaiting_payment' && renderAwaitingPaymentBody()}
@@ -1847,6 +2318,7 @@ export default function JobDetail() {
       {job.status === 'written_off' && renderWrittenOffBody()}
       {job.status === 'quoted' && renderQuotedBody()}
 
+      {job.status === 'enquiry' && renderEnquiryFooter()}
       {job.status === 'booked' && renderBookedFooter()}
       {job.status === 'in_progress' && renderInProgressFooter()}
       {job.status === 'awaiting_payment' && renderAwaitingPaymentFooter()}
@@ -1865,6 +2337,8 @@ export default function JobDetail() {
       {renderSendReminderSheet()}
       {renderRescheduleSheet()}
       {renderCalloutChargeSheet()}
+      {renderChangeStatusSheet()}
+      {renderEditPaymentMethodSheet()}
       {renderBookingConfirmationSheet()}
       {renderEditDetailsSheet()}
       {renderSendUpdateSheet()}

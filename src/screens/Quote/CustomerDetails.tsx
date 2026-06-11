@@ -100,7 +100,7 @@ export default function CustomerDetails({ customerId, onComplete, onCancel }: Cu
 
   if (loading) {
     return (
-      <div className="flex flex-col min-h-[100svh]">
+      <div className="flex flex-col h-full">
         <div className="flex-1 flex items-center justify-center">
           <div className="w-8 h-8 border-2 border-brand-border border-t-brand-black rounded-full animate-spin" />
         </div>
@@ -112,11 +112,11 @@ export default function CustomerDetails({ customerId, onComplete, onCancel }: Cu
     <div className="bg-brand-surface border border-brand-border rounded-lg px-3.5 py-2.5 mb-5 flex items-center gap-2">
       <div className="flex-1 min-w-0">
         <div className="text-sm font-semibold text-brand-black truncate">{name || 'Unknown'}</div>
-        <div className="text-xxs text-brand-muted mt-px">{phone}</div>
+        <div className="text-sm text-brand-muted mt-px">{phone}</div>
       </div>
       <button
         onClick={handleEdit}
-        className="text-xxs text-brand-mid underline underline-offset-2 cursor-pointer shrink-0"
+        className="text-sm text-brand-mid underline underline-offset-2 cursor-pointer shrink-0"
       >
         Edit
       </button>
@@ -124,7 +124,7 @@ export default function CustomerDetails({ customerId, onComplete, onCancel }: Cu
   ) : null;
 
   return (
-    <div className="flex flex-col min-h-[100svh]">
+    <div className="flex flex-col h-full">
       {/* Header */}
       <div className="px-4 pt-2 pb-3 border-b border-brand-borderLight shrink-0 grid grid-cols-3 items-center">
         <button
@@ -148,16 +148,17 @@ export default function CustomerDetails({ customerId, onComplete, onCancel }: Cu
         {customerStrip}
 
         <div className="mb-5">
-          <div className="text-micro font-bold text-brand-mid uppercase tracking-[0.7px] mb-2.5">
+          <div className="text-micro font-bold text-brand-mid tracking-[0.7px] mb-2.5">
             Customer
           </div>
 
           <div className="mb-2.5">
-            <label className="block text-label font-semibold text-brand-muted uppercase tracking-[0.3px] mb-1">
+            <label className="block text-label font-semibold text-brand-muted tracking-[0.3px] mb-1">
               Name
             </label>
             <input
               ref={nameRef}
+              autoFocus
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -171,7 +172,7 @@ export default function CustomerDetails({ customerId, onComplete, onCancel }: Cu
           </div>
 
           <div className="mb-2.5">
-            <label className="block text-label font-semibold text-brand-muted uppercase tracking-[0.3px] mb-1">
+            <label className="block text-label font-semibold text-brand-muted tracking-[0.3px] mb-1">
               Phone number
             </label>
             <input
@@ -188,12 +189,12 @@ export default function CustomerDetails({ customerId, onComplete, onCancel }: Cu
               }`}
             />
             {phoneError && (
-              <p className="text-xxs text-status-error mt-1">Enter a valid UK mobile number</p>
+              <p className="text-sm text-status-error mt-1">Enter a valid UK mobile number</p>
             )}
           </div>
 
           <div>
-            <label className="block text-label font-semibold text-brand-muted uppercase tracking-[0.3px] mb-1">
+            <label className="block text-label font-semibold text-brand-muted tracking-[0.3px] mb-1">
               Address <span className="text-label text-brand-muted font-normal normal-case tracking-0 ml-1">(optional · used for navigation)</span>
             </label>
             <input
@@ -212,7 +213,7 @@ export default function CustomerDetails({ customerId, onComplete, onCancel }: Cu
       </div>
 
       {/* Footer */}
-      <div className="sticky bottom-0 z-30 bg-white border-t border-brand-borderLight shadow-sheet">
+      <div className="sticky bottom-0 z-30 bg-[var(--app-shell-bg)] border-t border-brand-borderLight shadow-sheet">
         <div className="px-4 py-3 pb-[calc(32px_+_env(safe-area-inset-bottom))]">
           <Button
             variant="primary"

@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, X, Plus, Calendar, Clock } from 'lucide-react';
-import { db, type Customer, type Profile } from '../../lib/db';
+import { db, type Customer, type Profile, type CustomItem } from '../../lib/db';
 import { useAppStore } from '../../store/useAppStore';
 import { SegmentedControl } from '../../components/SegmentedControl';
+import { VoiceInputButton } from '../../components/VoiceInputButton';
 import { Button } from '../../components/Button';
 import { StickyFooter } from '../../components/StickyFooter';
 
@@ -48,18 +50,7 @@ const PAYMENT_OPTIONS = [
 
 const DEPOSIT_PRESETS = [10, 20, 25, 50];
 
-/* Quick-add items by trade type */
-const QUICK_ADD_ITEMS: Record<string, string[]> = {
-  plumber: ['Pipes', 'Fittings', 'Boiler', 'Radiator', 'Valves'],
-  electrician: ['Cable', 'Sockets', 'Switches', 'Consumer unit', 'Light fittings'],
-  builder: ['Bricks', 'Cement', 'Timber', 'Plaster', 'Tiles'],
-  other: ['Materials', 'Parts', 'Tools'],
-};
 
-function getQuickAddItems(profile: Profile | null): string[] {
-  if (!profile?.trade) return QUICK_ADD_ITEMS.other;
-  return QUICK_ADD_ITEMS[profile.trade] || QUICK_ADD_ITEMS.other;
-}
 
 /* ─── types ─── */
 
@@ -81,8 +72,15 @@ interface QuoteBuilderProps {
 /* ─── component ─── */
 
 export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onSaveDraft }: QuoteBuilderProps) {
+  const navigate = useNavigate();
   const userId = useAppStore((s) => s.userId);
   const [customer, setCustomer] = useState<Customer | null>(null);
+  const [_customerHistory, setCustomerHistory] = useState<{
+    totalJobs: number;
+    totalQuoted: number;
+    totalPaid: number;
+    lastQuoteDate: string | null;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentJobId, setCurrentJobId] = useState<string | undefined>(jobId);
 
@@ -98,6 +96,9 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onS
   const [depositCustom, setDepositCustom] = useState<string | null>(null);
   const [titleFocused, setTitleFocused] = useState(false);
 
+  /* custom items library */
+  const [customItems, setCustomItems] = useState<CustomItem[]>([]);
+
   const [profile, setProfile] = useState<Profile | null>(null);
   const depositSectionRef = useRef<HTMLDivElement>(null);
 
@@ -108,8 +109,32 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onS
     const load = async () => {
       const c = await db.customers.get(customerId);
       setCustomer(c || null);
+
+      /* Load customer history */
+      if (c) {
+        const jobs = await db.jobs.where('customer_id').equals(c.id).toArray();
+        const jobIds = jobs.map((j) => j.id);
+        const lineItems = jobIds.length > 0 ? await db.line_items.where('job_id').anyOf(jobIds).toArray() : [];
+        const payments = jobIds.length > 0 ? await db.payments.where('job_id').anyOf(jobIds).toArray() : [];
+        const totalQuoted = lineItems.reduce((sum, li) => sum + li.amount, 0);
+        const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
+        const quotedJobs = jobs.filter((j) => j.quote_sent_at);
+        const lastQuoteDate: string | null = quotedJobs.length > 0
+          ? quotedJobs.sort((a, b) => new Date(b.quote_sent_at!).getTime() - new Date(a.quote_sent_at!).getTime())[0].quote_sent_at ?? null
+          : null;
+        setCustomerHistory({
+          totalJobs: jobs.length,
+          totalQuoted,
+          totalPaid,
+          lastQuoteDate,
+        });
+      }
       const p = await db.profiles.get(userId);
       setProfile(p || null);
+      
+      /* Load custom items */
+      const ci = await db.custom_items.where('user_id').equals(userId).sortBy('sort_order');
+      setCustomItems(ci);
 
       if (currentJobId) {
         const job = await db.jobs.get(currentJobId);
@@ -252,7 +277,11 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onS
   /* ─── derived ─── */
   const total = useMemo(() => items.reduce((sum, i) => sum + (i.amountNum || 0), 0), [items]);
 
-  const canPreview = title.trim().length > 0 && items.length > 0 && items.every((i) => i.amountNum > 0);
+  const canPreview =
+    title.trim().length > 0 &&
+    items.length > 0 &&
+    total > 0 &&
+    items.every((item) => item.description.trim() && item.amountNum > 0);
 
   const depositAmount = paymentTerms === 'deposit' ? total * (depositPct / 100) : 0;
   const balance = total - depositAmount;
@@ -435,12 +464,24 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onS
     ]);
   };
 
-  const addQuickItem = (description: string) => {
-    const itemId = crypto.randomUUID();
+  const addQuickItem = (customItem: CustomItem) => {
     setItems((prev) => [
       ...prev,
-      { id: itemId, description, amount: '', amountNum: 0 },
+      { id: crypto.randomUUID(), description: customItem.description, amount: customItem.amount.toFixed(2), amountNum: customItem.amount },
     ]);
+  };
+
+  const isInLibrary = (description: string, amount: number): boolean => {
+    return customItems.some((ci) => ci.description === description && ci.amount === amount);
+  };
+
+  const saveToLibrary = async (description: string, amount: number) => {
+    if (!userId || isInLibrary(description, amount)) return;
+    const n = new Date().toISOString();
+    const item: CustomItem = { id: crypto.randomUUID(), user_id: userId, description, amount, sort_order: customItems.length, created_at: n, updated_at: n, _sync_status: 'pending' };
+    await db.custom_items.add(item);
+    await db.sync_queue.add({ operation: 'insert', table_name: 'custom_items', record_id: item.id, payload: { ...item }, created_at: n, retry_count: 0 });
+    setCustomItems((prev) => [...prev, item]);
   };
 
   const handleRemoveEmptyItems = () => {
@@ -477,7 +518,13 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onS
     onPreview();
   };
 
-  const quickAdds = getQuickAddItems(profile);
+  /* Starter suggestions when user has no custom items */
+  const starterItems: CustomItem[] = [
+    { id: 'starter-1', user_id: '', description: 'Labour', amount: profile?.default_labour_charge || 0, sort_order: 0, created_at: '', updated_at: '', _sync_status: 'pending' },
+    { id: 'starter-2', user_id: '', description: 'Materials', amount: 0, sort_order: 1, created_at: '', updated_at: '', _sync_status: 'pending' },
+    { id: 'starter-3', user_id: '', description: 'Callout charge', amount: profile?.callout_charge || 75, sort_order: 2, created_at: '', updated_at: '', _sync_status: 'pending' },
+  ];
+  const displayItems = customItems.length > 0 ? customItems : starterItems;
 
   /* auto-scroll to deposit section on select */
   useEffect(() => {
@@ -490,7 +537,7 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onS
 
   if (loading) {
     return (
-      <div className="flex flex-col min-h-[100svh]">
+      <div className="flex flex-col h-full">
         <div className="flex-1 flex items-center justify-center">
           <div className="w-8 h-8 border-2 border-brand-border border-t-brand-black rounded-full animate-spin" />
         </div>
@@ -499,7 +546,7 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onS
   }
 
   return (
-    <div className="flex flex-col min-h-[100svh]">
+    <div className="flex flex-col h-full">
       {/* Header */}
       <div className="px-4 pt-2 pb-3 border-b border-brand-borderLight shrink-0 grid grid-cols-3 items-center">
         <button
@@ -520,11 +567,11 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onS
           <div className="bg-brand-surface border border-brand-border rounded-lg px-3.5 py-2.5 mb-5 flex items-center gap-2">
             <div className="flex-1 min-w-0">
               <div className="text-sm font-semibold text-brand-black truncate">{customer.name || 'Unknown'}</div>
-              <div className="text-xxs text-brand-muted mt-px">{customer.phone}</div>
+              <div className="text-sm text-brand-muted mt-px">{customer.phone}</div>
             </div>
             <button
               onClick={onBack}
-              className="text-xxs text-brand-mid underline underline-offset-2 cursor-pointer shrink-0"
+              className="text-sm text-brand-mid underline underline-offset-2 cursor-pointer shrink-0"
             >
               Edit
             </button>
@@ -533,12 +580,12 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onS
 
         {/* Job details */}
         <div className="mb-5">
-          <div className="text-micro font-bold text-brand-mid uppercase tracking-[0.7px] mb-2.5">
+          <div className="text-micro font-bold text-brand-mid tracking-[0.7px] mb-2.5">
             Job
           </div>
 
           <div className="mb-2.5">
-            <label className="block text-label font-semibold text-brand-muted uppercase tracking-[0.3px] mb-1">
+            <label className="block text-label font-semibold text-brand-muted tracking-[0.3px] mb-1">
               Job title
             </label>
             <input
@@ -555,7 +602,7 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onS
           </div>
 
           <div className="mb-2.5">
-            <label className="block text-label font-semibold text-brand-muted uppercase tracking-[0.3px] mb-1">
+            <label className="block text-label font-semibold text-brand-muted tracking-[0.3px] mb-1">
               Date <span className="normal-case font-normal tracking-0">(optional)</span>
             </label>
             <div className="relative">
@@ -572,7 +619,7 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onS
 
           <div className="flex gap-2.5">
             <div className="flex-1">
-              <label className="block text-label font-semibold text-brand-muted uppercase tracking-[0.3px] mb-1">
+              <label className="block text-label font-semibold text-brand-muted tracking-[0.3px] mb-1">
                 Start <span className="normal-case font-normal tracking-0">(optional)</span>
               </label>
               <div className="relative">
@@ -587,7 +634,7 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onS
               </div>
             </div>
             <div className="flex-1">
-              <label className="block text-label font-semibold text-brand-muted uppercase tracking-[0.3px] mb-1">
+              <label className="block text-label font-semibold text-brand-muted tracking-[0.3px] mb-1">
                 End <span className="normal-case font-normal tracking-0">(optional)</span>
               </label>
               {/* End time: show "Add end time" button when empty, time input when set */}
@@ -626,7 +673,7 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onS
 
         {/* Line items */}
         <div className="mb-5">
-          <div className="text-micro font-bold text-brand-mid uppercase tracking-[0.7px] mb-2.5">
+          <div className="text-micro font-bold text-brand-mid tracking-[0.7px] mb-2.5">
             Items
           </div>
 
@@ -634,16 +681,23 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onS
             {items.map((item, idx) => (
               <div
                 key={item.id}
-                className={`flex items-center gap-2 px-3.5 py-2.5 ${idx < items.length - 1 ? 'border-b border-brand-borderLight' : ''}`}
+                className={`flex items-center gap-2 px-3.5 py-2.5 min-w-0 ${idx < items.length - 1 ? 'border-b border-brand-borderLight' : ''}`}
               >
-                <input
-                  type="text"
-                  value={item.description}
-                  onChange={(e) => updateItemDesc(item.id, e.target.value)}
-                  onBlur={saveItemBlur}
-                  placeholder="Item description"
-                  className="flex-1 min-h-12 px-2 border-2 border-brand-border rounded-lg text-base font-medium text-brand-black placeholder:text-brand-muted placeholder:italic outline-none focus:border-brand-black"
-                />
+                <div className="flex-1 min-w-0 flex items-center gap-1">
+                  <input
+                    type="text"
+                    value={item.description}
+                    onChange={(e) => updateItemDesc(item.id, e.target.value)}
+                    onBlur={saveItemBlur}
+                    placeholder="Item description"
+                    className={`flex-1 min-w-0 min-h-12 px-2 border-2 rounded-lg text-base font-medium text-brand-black placeholder:text-brand-muted placeholder:italic outline-none focus:border-brand-black ${
+                      item.description.trim() ? 'border-brand-border' : 'border-status-error'
+                    }`}
+                  />
+                  <VoiceInputButton
+                    onResult={(text) => updateItemDesc(item.id, (item.description ? item.description + ' ' : '') + text)}
+                  />
+                </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <span className="text-sm text-brand-mid">£</span>
                   <input
@@ -663,32 +717,43 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onS
                   className="w-7 h-7 rounded-full border border-brand-border bg-brand-surface flex items-center justify-center shrink-0 cursor-pointer"
                   aria-label="Remove item"
                 >
-                  <X size={14} className="text-brand-muted" />                </button>
+                  <X size={14} className="text-brand-muted" />
+                </button>
               </div>
             ))}
           </div>
 
           <button
             onClick={addItem}
-            className="inline-flex items-center gap-1 text-xs font-medium text-brand-mid underline underline-offset-2 cursor-pointer"
+            className="inline-flex items-center gap-1 text-sm font-medium text-brand-mid underline underline-offset-2 cursor-pointer"
           >
             <Plus size={14} />
             Add item
           </button>
 
-          {/* Quick-add chips */}
-          {quickAdds.length > 0 && (
+          {/* Quick-add chips — custom item library */}
+          {displayItems.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-2">
-              {quickAdds.map((desc) => (
+              {displayItems.map((item) => (
                 <button
-                  key={desc}
-                  onClick={() => addQuickItem(desc)}
-                  className="inline-flex items-center gap-1 h-8 px-3 rounded-full bg-brand-borderLight text-xxs font-medium text-brand-dark cursor-pointer border border-brand-border hover:bg-brand-border active:bg-brand-borderLight transition-colors"
+                  key={item.id}
+                  onClick={() => addQuickItem(item)}
+                  className="inline-flex items-center gap-1.5 h-9 px-3 rounded-full bg-brand-borderLight text-sm font-medium text-brand-dark cursor-pointer border border-brand-border hover:bg-brand-border active:bg-brand-borderLight transition-colors"
                 >
                   <Plus size={12} className="text-brand-muted" />
-  {desc}
+                  <span className="truncate max-w-[120px]">{item.description}</span>
+                  {item.amount > 0 && (
+                    <span className="text-brand-muted font-normal">£{item.amount.toFixed(2)}</span>
+                  )}
                 </button>
               ))}
+              <button
+                onClick={() => navigate('/settings')}
+                className="inline-flex items-center gap-1 h-9 px-3 rounded-full bg-transparent text-sm font-medium text-brand-muted cursor-pointer border border-dashed border-brand-border hover:border-brand-mid transition-colors"
+              >
+                <Plus size={12} />
+                Add items
+              </button>
             </div>
           )}
 
@@ -703,24 +768,46 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onS
           )}
         </div>
 
+        {/* Save to library nudge */}
+        {(() => {
+          const firstNewItem = items.find((i) => i.description.trim() && i.amountNum > 0 && !isInLibrary(i.description, i.amountNum));
+          return firstNewItem ? (
+            <div className="mb-4">
+              <button
+                onClick={() => saveToLibrary(firstNewItem.description, firstNewItem.amountNum)}
+                className="text-sm text-brand-mid underline underline-offset-2 cursor-pointer hover:text-brand-dark transition-colors"
+              >
+                💾 Save "{firstNewItem.description}" to library
+              </button>
+            </div>
+          ) : null;
+        })()}
+
         {/* Notes / What's included */}
         <div className="mb-5">
-          <label className="block text-label font-semibold text-brand-muted uppercase tracking-[0.3px] mb-1">
+          <label className="block text-label font-semibold text-brand-muted tracking-[0.3px] mb-1">
             Notes <span className="normal-case font-normal tracking-0">(optional)</span>
           </label>
-          <textarea
-            value={notes}
-            onChange={(e) => handleNotesChange(e.target.value)}
-            onBlur={handleNotesBlur}
-            placeholder="e.g. Includes all parts, labour, and disposal of old unit"
-            rows={3}
-            className="w-full min-h-20 px-3.5 py-2.5 border-2 border-brand-border rounded-lg text-base font-medium text-brand-black placeholder:text-brand-muted placeholder:italic outline-none focus:border-brand-black resize-none leading-relaxed"
-          />
+          <div className="relative">
+            <textarea
+              value={notes}
+              onChange={(e) => handleNotesChange(e.target.value)}
+              onBlur={handleNotesBlur}
+              placeholder="e.g. Includes all parts, labour, and disposal of old unit"
+              rows={3}
+              className="w-full min-h-20 px-3.5 py-2.5 pr-12 border-2 border-brand-border rounded-lg text-base font-medium text-brand-black placeholder:text-brand-muted placeholder:italic outline-none focus:border-brand-black resize-none leading-relaxed"
+            />
+            <div className="absolute bottom-2 right-2">
+              <VoiceInputButton
+                onResult={(text) => handleNotesChange((notes ? notes + ' ' : '') + text)}
+              />
+            </div>
+          </div>
         </div>
 
         {/* Payment terms */}
         <div className="mb-5">
-          <div className="text-micro font-bold text-brand-mid uppercase tracking-[0.7px] mb-2.5">
+          <div className="text-micro font-bold text-brand-mid tracking-[0.7px] mb-2.5">
             Payment
           </div>
           <SegmentedControl
@@ -729,7 +816,7 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onS
             onChange={handlePaymentTermsChange}
           />
           <div className="mt-2.5 bg-brand-surface border border-brand-border rounded-lg p-3">
-            <p className="text-xxs text-brand-dark leading-relaxed">
+            <p className="text-sm text-brand-dark leading-relaxed">
               {paymentTerms === 'on_completion' && (
                 <>
                   <span className="font-semibold text-brand-black">What happens at the end:</span> Customer pays the full amount in cash, by card, or bank transfer once the job is complete. You mark it as paid and they get a receipt.
@@ -753,7 +840,7 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onS
         {paymentTerms === 'deposit' && (
           <div ref={depositSectionRef} className="mb-5">
             <div className="bg-brand-surface border border-brand-border rounded-lg p-3.5">
-              <div className="text-micro font-bold text-brand-mid uppercase tracking-[0.7px] mb-2.5">
+              <div className="text-micro font-bold text-brand-mid tracking-[0.7px] mb-2.5">
                 Deposit amount
               </div>
               <div className="flex gap-2 mb-3">
@@ -761,7 +848,7 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onS
                 <button
                   key={pct}
                   onClick={() => handleDepositPctChange(pct)}
-                  className={`flex-1 h-11 rounded-lg text-xs font-semibold cursor-pointer border-2 ${
+                  className={`flex-1 h-11 rounded-lg text-sm font-semibold cursor-pointer border-2 ${
                     depositPct === pct && depositCustom === null
                       ? 'bg-white text-brand-black border-brand-black'
                       : 'bg-white text-brand-mid border-brand-border'
@@ -772,7 +859,7 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onS
               ))}
               <button
                 onClick={() => setDepositCustom('')}
-                className={`flex-1 h-11 rounded-lg text-xs font-semibold cursor-pointer border-2 ${
+                className={`flex-1 h-11 rounded-lg text-sm font-semibold cursor-pointer border-2 ${
                   depositCustom !== null
                     ? 'bg-white text-brand-black border-brand-black'
                     : 'bg-white text-brand-mid border-brand-border'
@@ -796,7 +883,7 @@ export default function QuoteBuilder({ customerId, jobId, onPreview, onBack, onS
               </div>
             )}
 
-              <div className="text-xs text-brand-mid text-center leading-relaxed">
+              <div className="text-sm text-brand-mid text-center leading-relaxed">
                 Deposit: <span className="font-bold text-brand-black">£{formatAmountDisplay(depositAmount)}</span>
                 <br />
                 Balance on completion: <span className="font-bold text-brand-black">£{formatAmountDisplay(balance)}</span>

@@ -1,10 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+
 import { useAppStore } from '../../store/useAppStore';
+import { captureUserSignedUp, capture } from '../../lib/analytics';
+import { showSuccess } from '../../components/Toast/store';
 import { supabase } from '../../lib/supabase';
 import { db } from '../../lib/db';
 import type { Profile } from '../../lib/db';
 import { ProgressDots } from '../../components/ProgressDots';
+import { hapticSuccess } from '../../lib/haptics';
 import { StickyFooter } from '../../components/StickyFooter';
 import { Button } from '../../components/Button';
 import { Check, Wrench, Zap, HardHat, Hammer, HelpCircle } from 'lucide-react';
@@ -36,6 +40,7 @@ const PAYMENT_TERMS: Array<{ value: PaymentTerms; label: string; description: st
 export default function Onboarding() {
   const [step, setStep] = useState<Step>(1);
   const navigate = useNavigate();
+  
   const setUserId = useAppStore((s) => s.setUserId);
   const [userId, setLocalUserId] = useState<string | null>(null);
   const [phone, setPhone] = useState('');
@@ -52,6 +57,11 @@ export default function Onboarding() {
   const [defaultLabourCharge, setDefaultLabourCharge] = useState('150');
   const [autoFillDefault, setAutoFillDefault] = useState(true);
   const [showTermsHelp, setShowTermsHelp] = useState(false);
+
+  // Track onboarding step progress
+  useEffect(() => {
+    capture('onboarding_step_viewed', { step, total_steps: 4 });
+  }, [step]);
 
   // Get user on mount
   useEffect(() => {
@@ -72,7 +82,7 @@ export default function Onboarding() {
       if (mockUser) {
         const mock = JSON.parse(mockUser);
         setLocalUserId(mock.id);
-        setPhone(mock.phone || mock.email || '');
+        setPhone(mock.phone || '');
       }
     }
     fetchUser();
@@ -145,16 +155,20 @@ export default function Onboarding() {
     nextStep();
   };
 
-  const handleContinueS4 = async () => {
+  
+    const handleContinueS4 = async () => {
     const resolvedUserId = await handleWriteProfile();
     if (resolvedUserId) setUserId(resolvedUserId);
+    hapticSuccess();
+    showSuccess("Profile saved — let's go!");
+    captureUserSignedUp(trade, window.location.search);
     navigate('/', { replace: true });
   };
 
   const firstName = fullName.trim().split(' ')[0] || 'there';
 
   return (
-    <div className="flex flex-col min-h-[100svh]">
+    <div className="flex flex-col h-full">
       <ProgressDots total={4} current={step} />
 
       {/* ── S1: Welcome ── */}
@@ -173,8 +187,8 @@ export default function Onboarding() {
             <div className="flex flex-col gap-4">
               {/* Full name */}
               <div>
-                <label className="text-label font-bold uppercase tracking-[0.4px] text-brand-muted mb-1.5 block">
-                  Your name
+                <label className="text-label font-bold tracking-[0.4px] text-brand-muted mb-1.5 block">
+                  Your Name
                 </label>
                 <div
                   className={`flex items-center border-2 rounded-xl min-h-13 overflow-hidden transition-colors ${
@@ -187,6 +201,7 @@ export default function Onboarding() {
                     type="text"
                     inputMode="text"
                     placeholder="e.g. Dave Smith"
+                    autoCapitalize="words"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     className="flex-1 text-base text-brand-black outline-none min-h-13 px-4 bg-transparent"
@@ -197,8 +212,8 @@ export default function Onboarding() {
 
               {/* Phone (read-only, pre-filled) */}
               <div>
-                <label className="text-label font-bold uppercase tracking-[0.4px] text-brand-muted mb-1.5 block">
-                  Your phone number
+                <label className="text-label font-bold tracking-[0.4px] text-brand-muted mb-1.5 block">
+                  Your Phone Number
                 </label>
                 <div className="flex items-center border-2 rounded-xl min-h-13 overflow-hidden bg-brand-surface border-brand-border">
                   <input
@@ -238,16 +253,17 @@ export default function Onboarding() {
             </div>
 
             <div className="flex flex-col gap-4">
-              {/* Business name */}
+              {/* Business Name */}
               <div>
-                <label className="text-label font-bold uppercase tracking-[0.4px] text-brand-muted mb-1.5 block">
-                  Business name <span className="font-normal normal-case tracking-normal text-label ml-1">(optional)</span>
+                <label className="text-label font-bold tracking-[0.4px] text-brand-muted mb-1.5 block">
+                  Business Name <span className="font-normal normal-case tracking-normal text-label ml-1">(optional)</span>
                 </label>
                 <div className="flex items-center border-2 rounded-xl min-h-13 overflow-hidden border-brand-border">
                   <input
                     type="text"
                     inputMode="text"
                     placeholder="Dave's Plumbing & Heating"
+                    autoCapitalize="words"
                     value={businessName}
                     onChange={(e) => setBusinessName(e.target.value)}
                     className="flex-1 text-base text-brand-black outline-none min-h-13 px-4 bg-transparent"
@@ -255,10 +271,10 @@ export default function Onboarding() {
                 </div>
               </div>
 
-              {/* Trade type — 2×2 grid */}
+              {/* Trade Type — 2×2 grid */}
               <div>
-                <label className="text-label font-bold uppercase tracking-[0.4px] text-brand-muted mb-2 block">
-                  Trade type
+                <label className="text-label font-bold tracking-[0.4px] text-brand-muted mb-2 block">
+                  Trade Type
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   {TRADE_OPTIONS.map((opt) => {
@@ -282,14 +298,15 @@ export default function Onboarding() {
 
                 {trade === 'other' && (
                   <div className="mt-3">
-                    <label className="text-label font-bold uppercase tracking-[0.4px] text-brand-muted mb-1.5 block">
-                      What trade?
+                    <label className="text-label font-bold tracking-[0.4px] text-brand-muted mb-1.5 block">
+                      What Trade?
                     </label>
                     <div className="flex items-center border-2 rounded-xl min-h-13 overflow-hidden border-brand-border">
                       <input
                         type="text"
                         inputMode="text"
                         placeholder="e.g. Landscaper, Painter, Roofer"
+                    autoCapitalize="words"
                         value={tradeOther}
                         onChange={(e) => setTradeOther(e.target.value)}
                         className="flex-1 text-base text-brand-black outline-none min-h-13 px-4 bg-transparent"
@@ -327,10 +344,10 @@ export default function Onboarding() {
             </div>
 
             <div className="flex flex-col gap-5">
-              {/* Callout charge */}
+              {/* Callout Charge */}
               <div>
-                <label className="text-label font-bold uppercase tracking-[0.4px] text-brand-muted mb-1.5 block">
-                  Callout charge
+                <label className="text-label font-bold tracking-[0.4px] text-brand-muted mb-1.5 block">
+                  Callout Charge
                 </label>
                 <div className="flex items-center border-2 rounded-xl min-h-13 overflow-hidden border-brand-border">
                   <span className="text-md text-brand-black px-4 shrink-0">£</span>
@@ -342,15 +359,15 @@ export default function Onboarding() {
                     className="flex-1 text-base text-brand-black outline-none min-h-13 bg-transparent pr-4"
                   />
                 </div>
-                <p className="text-xxs text-brand-muted mt-1.5 leading-relaxed">
+                <p className="text-sm text-brand-muted mt-1.5 leading-relaxed">
                   Charged when customer not home
                 </p>
               </div>
 
-              {/* Default labour charge */}
+              {/* Default Labour Charge */}
               <div>
-                <label className="text-label font-bold uppercase tracking-[0.4px] text-brand-muted mb-1.5 block">
-                  Default labour charge
+                <label className="text-label font-bold tracking-[0.4px] text-brand-muted mb-1.5 block">
+                  Default Labour Charge
                 </label>
                 <div className="flex items-center border-2 rounded-xl min-h-13 overflow-hidden border-brand-border mb-2">
                   <span className="text-md text-brand-black px-4 shrink-0">£</span>
@@ -387,12 +404,12 @@ export default function Onboarding() {
                       }`}
                     />
                   </button>
-                  <span className="text-xs text-brand-mid">
+                  <span className="text-sm text-brand-mid">
                     Auto-fill on new quotes
                   </span>
                 </div>
 
-                <p className="text-xxs text-brand-muted mt-2 leading-relaxed">
+                <p className="text-sm text-brand-muted mt-2 leading-relaxed">
                   {autoFillDefault
                     ? "Automatically added to every new quote. Edit or remove per quote."
                     : "You can always add items manually when building a quote."}
@@ -402,8 +419,8 @@ export default function Onboarding() {
               {/* Payment terms — radio cards with descriptions */}
               <div>
                 <div className="flex items-center gap-2 mb-2">
-                  <label className="text-label font-bold uppercase tracking-[0.4px] text-brand-muted">
-                    Default payment terms
+                  <label className="text-label font-bold tracking-[0.4px] text-brand-muted">
+                    Default Payment Terms
                   </label>
                   <button
                     onClick={() => setShowTermsHelp(!showTermsHelp)}
@@ -416,7 +433,7 @@ export default function Onboarding() {
 
                 {showTermsHelp && (
                   <div className="bg-sky-50 rounded-lg p-3 mb-2 border border-sky-200">
-                    <p className="text-xs text-sky-700 leading-relaxed">
+                    <p className="text-sm text-sky-700 leading-relaxed">
                       This is the default way you ask to be paid. It appears on every quote you send. You can change it for any individual job.
                     </p>
                   </div>
@@ -438,7 +455,7 @@ export default function Onboarding() {
                         <span className={`font-semibold text-sm ${isSelected ? 'text-brand-black' : 'text-brand-mid'}`}>
                           {opt.label}
                         </span>
-                        <span className={`text-xxs leading-relaxed ${isSelected ? 'text-brand-black' : 'text-brand-muted'}`}>
+                        <span className={`text-sm leading-relaxed ${isSelected ? 'text-brand-black' : 'text-brand-muted'}`}>
                           {opt.description}
                         </span>
                       </button>
@@ -447,10 +464,10 @@ export default function Onboarding() {
                 </div>
               </div>
 
-              {/* Quote valid for */}
+              {/* Quote Valid For */}
               <div>
-                <label className="text-label font-bold uppercase tracking-[0.4px] text-brand-muted mb-1.5 block">
-                  Quote valid for
+                <label className="text-label font-bold tracking-[0.4px] text-brand-muted mb-1.5 block">
+                  Quote Valid For
                 </label>
                 <div className="flex items-center border-2 rounded-xl min-h-13 overflow-hidden border-brand-border">
                   <input
@@ -462,7 +479,7 @@ export default function Onboarding() {
                   />
                   <span className="text-md text-brand-mid pr-4 shrink-0">days</span>
                 </div>
-                <p className="text-xxs text-brand-muted mt-1.5 leading-relaxed">
+                <p className="text-sm text-brand-muted mt-1.5 leading-relaxed">
                   After this, the quote expires automatically. Common choices: 7, 14, 30, 60, or 90 days.
                 </p>
               </div>

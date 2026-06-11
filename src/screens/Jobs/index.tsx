@@ -3,7 +3,6 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ChevronRight, ClipboardList, Search, X } from 'lucide-react';
 import { db, type Job, type Customer, type LineItem, type JobStatus } from '../../lib/db';
 import { useAppStore } from '../../store/useAppStore';
-import { TabBar } from '../../components/TabBar';
 import SyncIndicator from '../../components/SyncIndicator';
 import { Button } from '../../components/Button';
 
@@ -215,12 +214,12 @@ export default function Jobs() {
         <span className="flex items-center gap-1.5 flex-wrap">
           Invoice sent {days === 0 ? 'today' : `${days} day${days !== 1 ? 's' : ''} ago`}
           {days >= 30 && (
-            <span className="inline-flex items-center px-1.5 py-[1px] rounded-xs text-micro font-bold uppercase tracking-wide border border-red-200 bg-status-redBg text-status-red">
+            <span className="inline-flex items-center px-1.5 py-[1px] rounded-xs text-xs font-bold tracking-wide border border-red-200 bg-status-redBg text-status-red">
               Overdue
             </span>
           )}
           {days >= 1 && days < 30 && (
-            <span className="inline-flex items-center px-1.5 py-[1px] rounded-xs text-micro font-bold uppercase tracking-wide border border-amber-200 bg-status-amberBg text-status-amber">
+            <span className="inline-flex items-center px-1.5 py-[1px] rounded-xs text-xs font-bold tracking-wide border border-amber-200 bg-status-amberBg text-status-amber">
               Chase · {days}d
             </span>
           )}
@@ -233,7 +232,7 @@ export default function Jobs() {
           {job.scheduled_start
             ? `${formatShortDate(new Date(job.scheduled_start))} · ${formatTime(new Date(job.scheduled_start))}`
             : 'No date set'}
-          <span className="inline-flex items-center px-1.5 py-[1px] rounded-xs text-micro font-bold uppercase tracking-wide border border-amber-300 bg-status-amberMid text-status-amberDark">
+          <span className="inline-flex items-center px-1.5 py-[1px] rounded-xs text-xs font-bold tracking-wide border border-amber-300 bg-status-amberMid text-status-amberDark">
             Action needed
           </span>
         </span>
@@ -259,15 +258,15 @@ export default function Jobs() {
       className="flex items-center gap-2.5 py-3 border-b border-brand-surface cursor-pointer last:border-b-0"
     >
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-semibold text-brand-black truncate">
+        <div className="text-base font-semibold text-brand-black truncate">
           {job.customer.name} · {job.title}
         </div>
-        <div className="text-xxs text-brand-muted mt-0.5">
+        <div className="text-sm text-brand-muted mt-0.5">
           {renderSubLine(job)}
         </div>
       </div>
       <div className="flex items-center gap-1.5 shrink-0">
-        <span className="text-xs font-semibold text-brand-dark">
+        <span className="text-sm font-semibold text-brand-dark">
           £{job.total.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </span>
         <ChevronRight size={16} className="shrink-0 text-brand-muted" />
@@ -278,7 +277,7 @@ export default function Jobs() {
   const renderGroupHeader = (status: JobStatus, count: number) => (
     <div className="flex items-center gap-2 pb-2 border-b border-brand-borderLight mb-0">
       <div className={`w-2 h-2 rounded-full shrink-0 ${statusDotClasses[status]}`} />
-      <span className="text-label font-bold uppercase tracking-[0.5px] text-brand-dark flex-1">
+      <span className="text-label font-bold tracking-[0.5px] text-brand-dark flex-1">
         {statusLabels[status]}
       </span>
       <span className="text-label text-brand-muted font-medium">
@@ -294,10 +293,10 @@ export default function Jobs() {
       className="flex items-center gap-2 py-3 border-b border-brand-borderLight cursor-pointer last:border-b-0"
     >
       <div className={`w-2 h-2 rounded-full shrink-0 ${statusDotClasses[status]}`} />
-      <span className="text-xs font-semibold text-brand-muted flex-1">
+      <span className="text-sm font-semibold text-brand-muted flex-1">
         {statusLabels[status]}
       </span>
-      <span className="text-xxs text-brand-muted">
+      <span className="text-sm text-brand-muted">
         {count} job{count !== 1 ? 's' : ''}
       </span>
       <ChevronRight size={16} className="shrink-0 text-brand-muted" />
@@ -318,6 +317,7 @@ export default function Jobs() {
       return (
         <div className="flex-1 flex flex-col items-center justify-center px-6 py-8 text-center">
           <ClipboardList size={40} className="mb-4 opacity-40 text-brand-muted" />
+          <div className="w-14 h-14 rounded-full bg-brand-borderLight flex items-center justify-center mb-3 mx-auto"><ClipboardList size={24} className="text-brand-muted" /></div>
           <p className="text-lg font-bold text-brand-black mb-2">No jobs yet</p>
           <p className="text-sm text-brand-muted leading-relaxed mb-7">
             Log a missed call or create a quote to get your first job on the books.
@@ -345,15 +345,10 @@ export default function Jobs() {
     );
   };
 
-  const handleNavigate = (tab: 'home' | 'jobs' | 'activity' | 'settings') => {
-    if (tab === 'jobs') return;
-    navigate('/' + tab);
-  };
-
   /* ─── main render ─── */
   if (loading) {
     return (
-      <div className="flex flex-col min-h-[100svh]">
+      <div className="flex flex-col h-full">
         <div className="flex-1 flex items-center justify-center">
           <div className="w-8 h-8 border-2 border-brand-border border-t-brand-black rounded-full animate-spin" />
         </div>
@@ -362,7 +357,7 @@ export default function Jobs() {
   }
 
   return (
-    <div className="flex flex-col min-h-[100svh] relative">
+    <div className="flex flex-col h-full relative">
       {/* Header */}
       <div className="px-4 pt-4 flex items-center justify-between shrink-0">
         <h1 className="text-xl font-extrabold text-brand-black">Jobs</h1>
@@ -382,7 +377,7 @@ export default function Jobs() {
               key={f.key}
               onClick={() => { setFilter(f.key); setSearchParams(f.key === 'all' ? {} : { filter: f.key }); }}
               className={`
-                h-11 px-3.5 rounded-2xl flex items-center text-xs font-semibold whitespace-nowrap cursor-pointer shrink-0 border-2
+                h-11 px-3.5 rounded-2xl flex items-center text-sm font-semibold whitespace-nowrap cursor-pointer shrink-0 border-2
                 transition-colors
                 ${isActive
                   ? 'bg-brand-black text-brand-surface border-brand-black'
@@ -400,8 +395,8 @@ export default function Jobs() {
       {hasAnyJobs && (
         <div className="px-4 pt-2 shrink-0">
           <div className="relative flex items-center">
-            <div className="absolute left-3.5 shrink-0 pointer-events-none"><Search size={16} className="text-brand-muted" /> </div>
-            <input
+            <div className="absolute left-3.5 z-10 pointer-events-none"><Search size={16} className="text-brand-muted" /></div>
+            <input id="jobs-search-input"
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -421,16 +416,13 @@ export default function Jobs() {
 
       {/* Footer — only when there are jobs */}
       {hasAnyJobs && (
-        <div className="sticky bottom-0 z-30 bg-white border-t border-brand-borderLight">
+        <div className="sticky bottom-0 z-30 bg-[var(--app-shell-bg)] border-t border-brand-borderLight">
           <div className="flex gap-2 px-4 py-2.5 pb-[calc(10px_+_env(safe-area-inset-bottom))]">
             <div className="flex-1"><Button variant="primary" onClick={() => navigate('/quote')} fullWidth>+ New Quote</Button></div>
             <div className="flex-1"><Button variant="secondary" onClick={() => navigate('/quote', { state: { entryPoint: 'missed_call' } })} fullWidth>Log Missed Call</Button></div>
           </div>
         </div>
       )}
-
-      {/* Tab bar */}
-      <TabBar activeTab="jobs" onNavigate={handleNavigate} />
     </div>
   );
 }

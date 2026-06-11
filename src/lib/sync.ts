@@ -117,12 +117,18 @@ async function pushToSupabase(item: SyncQueueItem) {
 
   const table = supabase.from(table_name);
 
+  let result: { error: unknown } | null = null;
   if (operation === 'insert') {
-    await table.insert(cleanPayload);
+    result = await table.insert(cleanPayload);
   } else if (operation === 'update') {
-    await table.update(cleanPayload).eq('id', item.record_id);
+    result = await table.update(cleanPayload).eq('id', item.record_id);
   } else if (operation === 'delete') {
-    await table.delete().eq('id', item.record_id);
+    result = await table.delete().eq('id', item.record_id);
+  }
+
+  if (result?.error) {
+    console.error(`[sync] ${operation} on ${table_name} failed:`, result.error);
+    throw result.error;
   }
 }
 
@@ -159,15 +165,7 @@ export async function hasPendingSync(): Promise<boolean> {
     .where('retry_count')
     .below(MAX_RETRIES)
     .count();
-  if (pendingQueue > 0) return true;
-
-  // Also check Dexie records with pending status
-  const tables = [db.jobs, db.customers, db.line_items, db.work_log, db.payments, db.profiles];
-  for (const table of tables) {
-    const count = await table.where('_sync_status').equals('pending').count();
-    if (count > 0) return true;
-  }
-  return false;
+  return pendingQueue > 0;
 }
 
 // Check if any records have error status
