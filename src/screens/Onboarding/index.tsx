@@ -43,7 +43,7 @@ export default function Onboarding() {
   
   const setUserId = useAppStore((s) => s.setUserId);
   const [userId, setLocalUserId] = useState<string | null>(null);
-  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
 
   // Form data
   const [fullName, setFullName] = useState('');
@@ -70,8 +70,8 @@ export default function Onboarding() {
         const { data: { user } } = await withTimeout(supabase.auth.getUser(), 5000);
         if (user) {
           setLocalUserId(user.id);
-          const phoneFromAuth = user.phone || user.user_metadata?.phone || '';
-          setPhone(phoneFromAuth);
+          const emailFromAuth = user.email || user.user_metadata?.email || '';
+          setEmail(emailFromAuth);
           return;
         }
       } catch {
@@ -82,7 +82,7 @@ export default function Onboarding() {
       if (mockUser) {
         const mock = JSON.parse(mockUser);
         setLocalUserId(mock.id);
-        setPhone(mock.phone || '');
+        setEmail(mock.email || '');
       }
     }
     fetchUser();
@@ -106,7 +106,7 @@ export default function Onboarding() {
     const profile: Profile = {
       id: resolvedUserId,
       full_name: fullName.trim(),
-      phone: phone.trim() || '00000000000',
+      phone: '',
       business_name: businessName.trim() || undefined,
       trade,
       trade_other: trade === 'other' ? tradeOther.trim() || undefined : undefined,
@@ -145,7 +145,7 @@ export default function Onboarding() {
       retry_count: 0,
     });
     return resolvedUserId;
-  }, [userId, fullName, phone, businessName, trade, tradeOther, calloutCharge, paymentTerms, defaultLabourDesc, defaultLabourCharge, autoFillDefault, quoteValidDays]);
+  }, [userId, fullName, businessName, trade, tradeOther, calloutCharge, paymentTerms, defaultLabourDesc, defaultLabourCharge, autoFillDefault, quoteValidDays]);
 
   const nextStep = () => setStep((s) => (s < 4 ? ((s + 1) as Step) : s));
   const skip = () => nextStep();
@@ -177,7 +177,7 @@ export default function Onboarding() {
           <div className="px-6 pt-4 flex-1">
             <div className="mb-6">
               <h1 className="text-xl font-extrabold text-brand-black">
-                Hi, what&apos;s your name?
+                Hi, what's your name?
               </h1>
               <p className="text-md text-brand-muted mt-1">
                 Just you for now — you can add your team later.
@@ -210,15 +210,15 @@ export default function Onboarding() {
                 </div>
               </div>
 
-              {/* Phone (read-only, pre-filled) */}
+              {/* Email (read-only, pre-filled from auth) */}
               <div>
                 <label className="text-label font-bold tracking-[0.4px] text-brand-muted mb-1.5 block">
-                  Your Phone Number
+                  Your Email
                 </label>
                 <div className="flex items-center border-2 rounded-xl min-h-13 overflow-hidden bg-brand-surface border-brand-border">
                   <input
-                    type="tel"
-                    value={phone || 'Not provided'}
+                    type="email"
+                    value={email || 'Not provided'}
                     readOnly
                     className="flex-1 text-base text-brand-mid min-h-13 px-4 bg-transparent outline-none cursor-not-allowed"
                   />
@@ -324,7 +324,7 @@ export default function Onboarding() {
               Continue →
             </Button>
             <Button variant="ghost" onClick={skip}>
-              Skip — I&apos;ll set this up later
+              Skip — I'll set this up later
             </Button>
           </StickyFooter>
         </div>
@@ -491,7 +491,7 @@ export default function Onboarding() {
               Continue →
             </Button>
             <Button variant="ghost" onClick={skip}>
-              Skip — I&apos;ll set this up later
+              Skip — I'll set this up later
             </Button>
           </StickyFooter>
         </div>
@@ -506,13 +506,13 @@ export default function Onboarding() {
             </div>
             <div className="text-center">
               <h1 className="text-xl font-extrabold text-brand-black">
-                You&apos;re all set, {firstName}
+                You're all set, {firstName}
               </h1>
               <p className="text-md text-brand-mid mt-2">
                 Log a missed call or create your first quote to get started.
               </p>
               <p className="text-md text-brand-mid mt-1">
-                Your jobs will appear on the home screen as soon as they&apos;re booked.
+                Your jobs will appear on the home screen as soon as they're booked.
               </p>
             </div>
           </div>

@@ -8,40 +8,20 @@ import { showSuccess, showError, showToast } from '../components/Toast/store';
 import { haptic, hapticError, hapticSuccess } from '../lib/haptics';
 import { Button } from '../components/Button';
 
-type AuthStep = 'phone' | 'otp';
+type AuthStep = 'email' | 'otp';
 
-function formatPhone(raw: string): string {
-  const digits = raw.replace(/\D/g, '');
-  if (digits.startsWith('0') && digits.length >= 10 && digits.length <= 11) {
-    return '+44' + digits.slice(1);
-  }
-  if (digits.startsWith('44') && digits.length >= 12) {
-    return '+' + digits;
-  }
-  if (raw.trim().startsWith('+')) {
-    return raw.trim();
-  }
-  if (digits.startsWith('0')) {
-    return '+44' + digits.slice(1);
-  }
-  return '+44' + digits;
-}
-
-function displayPhone(formatted: string): string {
-  if (formatted.startsWith('+44')) {
-    const digits = formatted.slice(3);
-    if (digits.length === 10) {
-      return '0' + digits.slice(0, 4) + ' ' + digits.slice(4, 7) + ' ' + digits.slice(7);
-    }
-    return '0' + digits;
-  }
-  return formatted;
+function validateEmail(email: string): string | null {
+  const trimmed = email.trim().toLowerCase();
+  if (!trimmed) return 'Enter your email address';
+  const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!re.test(trimmed)) return 'Enter a valid email address';
+  return null;
 }
 
 export default function Auth() {
   const navigate = useNavigate();
-  const [step, setStep] = useState<AuthStep>('phone');
-  const [phoneInput, setPhoneInput] = useState('');
+  const [step, setStep] = useState<AuthStep>('email');
+  const [emailInput, setEmailInput] = useState('');
   const [otp, setOtp] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -53,9 +33,8 @@ export default function Auth() {
     return () => clearTimeout(t);
   }, [countdown]);
 
-  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value.replace(/[^0-9+\s]/g, '');
-    setPhoneInput(val);
+  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setEmailInput(e.target.value);
     setError('');
   };
 
@@ -66,13 +45,10 @@ export default function Auth() {
   };
 
   const handleSendOtp = async () => {
-    if (!phoneInput.trim()) {
-      setError('Enter your phone number');
-      return;
-    }
-    const formatted = formatPhone(phoneInput);
-    if (!formatted.startsWith('+44') || formatted.length < 12) {
-      setError('Enter a valid UK mobile number');
+    const email = emailInput.trim().toLowerCase();
+    const validationError = validateEmail(email);
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
@@ -80,7 +56,8 @@ export default function Auth() {
     setLoading(true);
     try {
       const { error: otpError } = await supabase.auth.signInWithOtp({
-        phone: formatted,
+        email,
+        options: { shouldCreateUser: true },
       });
       if (otpError) {
         console.error('[Auth] OTP send error:', otpError);
@@ -90,7 +67,7 @@ export default function Auth() {
         return;
       }
       hapticSuccess();
-      showToast(`Code sent to ${displayPhone(formatted)}`, 'info', 3000);
+      showToast(`Code sent to ${email}`, 'info', 3000);
       setStep('otp');
       setCountdown(60);
     } catch (err) {
@@ -107,14 +84,14 @@ export default function Auth() {
       setError('Enter the 6-digit code');
       return;
     }
-    const formatted = formatPhone(phoneInput);
+    const email = emailInput.trim().toLowerCase();
     setError('');
     setLoading(true);
     try {
       const { data, error: verifyError } = await supabase.auth.verifyOtp({
-        phone: formatted,
+        email,
         token: otp,
-        type: 'sms',
+        type: 'email',
       });
       if (verifyError || !data.session) {
         console.error('[Auth] Verify error:', verifyError);
@@ -127,7 +104,7 @@ export default function Auth() {
       hapticSuccess();
       showSuccess("You're in");
       const userId = data.session.user.id;
-      identifyUser(userId, { phone: formatted });
+      identifyUser(userId, { email });
       captureUserSignedIn();
 
       const profile = await db.profiles.get(userId);
@@ -142,11 +119,12 @@ export default function Auth() {
 
   const handleResendOtp = async () => {
     if (countdown > 0) return;
-    const formatted = formatPhone(phoneInput);
+    const email = emailInput.trim().toLowerCase();
     setLoading(true);
     try {
       const { error: otpError } = await supabase.auth.signInWithOtp({
-        phone: formatted,
+        email,
+        options: { shouldCreateUser: true },
       });
       if (otpError) {
         showError(otpError.message || 'Could not resend code.');
@@ -163,8 +141,8 @@ export default function Auth() {
     }
   };
 
-  const handleChangeNumber = () => {
-    setStep('phone');
+  const handleChangeEmail = () => {
+    setStep('email');
     setOtp('');
     setError('');
   };
@@ -183,30 +161,30 @@ export default function Auth() {
 
       const existingMock = localStorage.getItem('tradepad_mock_user');
       let mockUserId: string;
-      let mockPhone: string;
+      let mockEmail: string;
 
       if (existingMock) {
         try {
           const mock = JSON.parse(existingMock);
           mockUserId = mock.id;
-          mockPhone = mock.phone || '07700 900000';
+          mockEmail = mock.email || 'test@example.com';
           console.log('[Auth] Reusing existing mock user:', mockUserId);
         } catch {
           mockUserId = 'mock_' + Date.now();
-          mockPhone = '07700 900000';
+          mockEmail = 'test@example.com';
           localStorage.setItem('tradepad_mock_user', JSON.stringify({
             id: mockUserId,
-            phone: mockPhone,
+            email: mockEmail,
             created_at: new Date().toISOString(),
           }));
           console.log('[Auth] Created new mock user (old was corrupted):', mockUserId);
         }
       } else {
         mockUserId = 'mock_' + Date.now();
-        mockPhone = '07700 900000';
+        mockEmail = 'test@example.com';
         localStorage.setItem('tradepad_mock_user', JSON.stringify({
           id: mockUserId,
-          phone: mockPhone,
+          email: mockEmail,
           created_at: new Date().toISOString(),
         }));
         console.log('[Auth] Created new mock user:', mockUserId);
@@ -258,8 +236,7 @@ export default function Auth() {
     });
   };
 
-  const formattedPhone = formatPhone(phoneInput);
-  const displayNumber = displayPhone(formattedPhone);
+  const email = emailInput.trim().toLowerCase();
 
   return (
     <div className="flex flex-col items-center px-6 pt-12 pb-8 h-full">
@@ -268,25 +245,24 @@ export default function Auth() {
       </div>
 
       <div className="w-full flex flex-col gap-4">
-        {step === 'phone' && (
+        {step === 'email' && (
           <>
             <div>
               <h1 className="text-xl font-bold text-brand-black">Get started</h1>
               <p className="text-sm text-brand-muted mt-1">
-                We&apos;ll send you a code to verify your number. No password needed.
+                We&apos;ll send you a 6-digit code. No password needed.
               </p>
             </div>
 
             <div className="flex flex-col gap-1">
-              <label className="text-label font-bold tracking-[0.4px] text-brand-muted">Mobile Number</label>
+              <label className="text-label font-bold tracking-[0.4px] text-brand-muted">Email</label>
               <div className={`flex items-center border-2 rounded-xl min-h-12 overflow-hidden transition-colors ${error ? 'border-red-500' : 'border-brand-border'}`}>
-                <span className="text-base text-brand-mid px-4 shrink-0 select-none">🇬🇧 +44</span>
                 <input
-                  type="tel"
-                  inputMode="tel"
-                  placeholder="7700 900000"
-                  value={phoneInput}
-                  onChange={handlePhoneChange}
+                  type="email"
+                  inputMode="email"
+                  placeholder="you@example.com"
+                  value={emailInput}
+                  onChange={handleEmailChange}
                   className="flex-1 text-base text-brand-black outline-none min-h-12 px-4 bg-transparent"
                   autoFocus
                 />
@@ -312,7 +288,7 @@ export default function Auth() {
             <div>
               <h1 className="text-xl font-bold text-brand-black">Enter code</h1>
               <p className="text-sm text-brand-muted mt-1">
-                We sent a 6-digit code to <span className="font-medium text-brand-black">{displayNumber}</span>
+                We sent a 6-digit code to <span className="font-medium text-brand-black">{email}</span>
               </p>
             </div>
 
@@ -353,10 +329,10 @@ export default function Auth() {
                 {countdown > 0 ? `Resend code in ${countdown}s` : 'Resend code'}
               </button>
               <button
-                onClick={handleChangeNumber}
+                onClick={handleChangeEmail}
                 className="text-sm font-medium text-brand-mid min-h-11 px-4 cursor-pointer active:opacity-70 transition-opacity duration-100"
               >
-                Change number
+                Change email
               </button>
             </div>
           </>
@@ -374,10 +350,10 @@ export default function Auth() {
               Mock Sign In (Test Mode)
             </Button>
             <button
-              onClick={() => { haptic('light'); setPhoneInput('07700 900000'); }}
+              onClick={() => { haptic('light'); setEmailInput('test@example.com'); }}
               className="h-11 w-full rounded-lg text-sm font-medium text-brand-mid cursor-pointer bg-transparent active:opacity-70 transition-opacity duration-100"
             >
-              Fill Test Number
+              Fill Test Email
             </button>
             <button
               onClick={handleResetDevData}
